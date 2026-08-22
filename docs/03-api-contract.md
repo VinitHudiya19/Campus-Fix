@@ -355,19 +355,174 @@ self-registration would let anyone create one.
 
 401 means "I do not know who you are". 403 means "I know who you are, and no".
 
-## Service requests — Planned (Phase 6 onwards)
+## Locations — Implemented
 
-    POST /api/requests
-    GET  /api/requests/{id}
-    GET  /api/requests
-    PUT  /api/requests/{id}/status
-    POST /api/requests/{id}/assign
-    POST /api/requests/{id}/reopen
-    POST /api/requests/{id}/confirm-resolution
+Reading is open to any signed-in user, because the report form needs the list.
+Everything else requires `ADMIN`.
 
-Listing will support `page`, `size`, `sort`, `status`, `priority`, `category`,
-`department` and `search`. Not every filter arrives at once — the base endpoint
-comes first.
+### `GET /api/locations`
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `campus` | string | none | Only that campus, matched case-insensitively |
+| `activeOnly` | boolean | `false` | Only locations still in use |
+
+```json
+[
+  {
+    "id": 1,
+    "campus": "Main Campus",
+    "building": "Library Block",
+    "floor": "Floor 2",
+    "room": "Reading Hall",
+    "displayName": "Main Campus - Library Block - Floor 2 - Reading Hall",
+    "active": true
+  }
+]
+```
+
+`floor` and `room` may be null — a main gate has neither.
+
+### `GET /api/locations/campuses`
+
+A plain list of campus names, for the first dropdown on the report form.
+
+### `POST /api/locations`
+
+```json
+{ "campus": "Main Campus", "building": "Library Block", "floor": "Floor 2", "room": "Reading Hall" }
+```
+
+| Field | Rules |
+|---|---|
+| `campus` | required, max 80 |
+| `building` | required, max 80 |
+| `floor` | optional, max 40 |
+| `room` | optional, max 40 |
+
+201 Created.
+409 if the same place already exists — compared case-insensitively, with blank
+treated as absent, so `floor: ""` and `floor: null` are the same place.
+
+### `PUT`, `DELETE`, `POST /{id}/activate`
+
+As elsewhere: update, deactivate (204), reactivate (204).
+
+---
+
+## Service requests — Implemented
+
+Everything here needs a signed-in user. **What you see depends on your role**,
+and it is enforced in the query, not by a URL rule:
+
+| Role | Sees |
+|---|---|
+| `STUDENT` | Only the requests they reported |
+| `TECHNICIAN` | Their department's requests (narrows to "assigned to me" in Phase 7) |
+| `DEPARTMENT_HEAD` | Their department's requests |
+| `ADMIN` | Everything |
+
+### `GET /api/requests`
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `status` | enum | none | `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `REOPENED`, `REJECTED` |
+| `categoryId` | long | none | Only that category |
+| `priority` | enum | none | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+| `page` | int | `0` | Page number |
+| `size` | int | `20` | Page size |
+| `sort` | string | `createdAt,desc` | Any field of the request |
+
+There is deliberately **no** `studentId` or `departmentId` parameter. Scope comes
+from the token, so it cannot be widened by editing the URL.
+
+```json
+{
+  "content": [
+    {
+      "id": 1,
+      "requestNumber": "CF-2026-000001",
+      "title": "Wi-Fi down in library",
+      "categoryName": "Wi-Fi",
+      "departmentName": "IT Support",
+      "locationName": "Main Campus - Library Block - Floor 2 - Reading Hall",
+      "priority": "MEDIUM", "priorityLabel": "Medium",
+      "status": "OPEN", "statusLabel": "Open",
+      "studentName": "Priya Nair",
+      "dueAt": "2026-08-24T18:59:00.727Z",
+      "createdAt": "2026-08-22T18:59:00.729Z"
+    }
+  ],
+  "page": 0, "size": 20, "totalElements": 1, "totalPages": 1
+}
+```
+
+The list row has no `description`. It is up to 2000 characters and nobody reads
+it until they open the request.
+
+### `GET /api/requests/{id}`
+
+The full record, including `description`, `studentEmail` and the category and
+department ids.
+
+**404 if the request is outside your scope** — not 403. A 403 would confirm the
+id exists and let anyone count the college's requests by walking the id range.
+
+### `POST /api/requests`
+
+Students only. 422 for any other role.
+
+```json
+{
+  "title": "Wi-Fi down in library",
+  "description": "No internet on the second floor since this morning",
+  "categoryId": 1,
+  "locationId": 1,
+  "priority": "MEDIUM"
+}
+```
+
+| Field | Rules |
+|---|---|
+| `title` | required, 5–150 characters |
+| `description` | required, 10–2000 characters |
+| `categoryId` | required, must exist and be active |
+| `locationId` | optional, must exist and be active if given |
+| `priority` | required — `LOW`, `MEDIUM` or `HIGH`; `CRITICAL` is staff-only |
+
+The body has no `studentId`, `status`, `requestNumber` or `dueAt`. The reporter
+comes from the token, the status is always `OPEN`, and the server generates the
+number and the deadline.
+
+201 Created with `Location: /api/requests/{id}`.
+404 if the category or location does not exist.
+422 if the category or location is inactive, if a student picks `CRITICAL`, or if
+a non-student tries to report.
+
+### `GET /api/requests/priorities`
+
+```json
+[
+  { "value": "LOW", "label": "Low", "slaHours": 72, "studentSelectable": true },
+  { "value": "MEDIUM", "label": "Medium", "slaHours": 48, "studentSelectable": true },
+  { "value": "HIGH", "label": "High", "slaHours": 24, "studentSelectable": true },
+  { "value": "CRITICAL", "label": "Critical", "slaHours": 4, "studentSelectable": false }
+]
+```
+
+`studentSelectable` lets the form hide `CRITICAL` from students using the same
+rule the server enforces.
+
+### `GET /api/requests/statuses`
+
+`value` and `label` for each of the seven statuses.
+
+### Planned — Phase 7 onwards
+
+    POST /api/requests/{id}/assign            Phase 7
+    PUT  /api/requests/{id}/status            Phase 8
+    POST /api/requests/{id}/reopen            Phase 8
+    POST /api/requests/{id}/confirm-resolution Phase 8
 
 ## API documentation
 

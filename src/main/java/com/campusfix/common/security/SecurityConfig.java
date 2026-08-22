@@ -59,8 +59,16 @@ public class SecurityConfig {
                         // Reference data: any signed-in user may read it, because
                         // a student needs the category list to report a problem.
                         // Only an admin may change it.
-                        .requestMatchers(HttpMethod.GET, "/api/departments/**", "/api/categories/**").authenticated()
-                        .requestMatchers("/api/departments/**", "/api/categories/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/departments/**", "/api/categories/**", "/api/locations/**").authenticated()
+                        .requestMatchers("/api/departments/**", "/api/categories/**", "/api/locations/**")
+                        .hasRole("ADMIN")
+
+                        // Service requests are open to every signed-in user, but
+                        // what each one actually sees is decided by RequestScope
+                        // in the service. A URL rule cannot express "your own
+                        // requests only", so it must not pretend to.
+                        .requestMatchers("/api/requests/**").authenticated()
 
                         // Account management is admin-only. The one exception is
                         // the signed-in user's own details, served from /api/auth.

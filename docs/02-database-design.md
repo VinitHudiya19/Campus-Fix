@@ -73,30 +73,39 @@ Reasoning in full: [phases/phase-04-users-and-roles.md](phases/phase-04-users-an
 - department_id
 - active
 
-### locations
-- id
-- campus
-- building
-- floor
-- room
-- active
+### locations — built in Phase 6
 
-### service_requests
-- id
-- request_number
-- student_id
-- category_id
-- location_id nullable
-- title
-- description
-- priority
-- status
-- assigned_at nullable
-- resolved_at nullable
-- closed_at nullable
-- due_at
-- created_at
-- updated_at
+```sql
+locations(id, campus, building, floor, room, active, created_at, updated_at,
+          UNIQUE KEY uk_location_place (campus, building, floor, room))
+```
+
+Stored in parts rather than as one free-text line, so requests can be grouped by
+building or campus for reporting. `floor` and `room` are nullable for places that
+have neither, and the service normalises blank to null so the same room cannot be
+added twice.
+
+### service_requests — built in Phase 6
+
+```sql
+service_requests(id, request_number UNIQUE, title, description,
+                 student_id FK, category_id FK, location_id FK NULL,
+                 priority, status, due_at, created_at, updated_at)
+```
+
+`request_number` is `CF-<year>-<6-digit id>`, derived from the id so it cannot
+collide.
+
+`priority` and `status` are enum names stored as strings, for the same reason as
+`users.role`.
+
+`due_at` is calculated once at creation from the priority and then stored. If it
+were recalculated on read, changing the SLA policy would retrospectively rewrite
+whether old requests met their target.
+
+`assigned_at`, `resolved_at` and `closed_at` are **not** here yet. They are added
+by the phases that can actually set them — Phase 7 and Phase 8 — rather than
+sitting empty in the meantime.
 
 ### assignments
 - id

@@ -13,8 +13,9 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 3 | Departments and categories | Done | [phase-03](phases/phase-03-departments-and-categories.md) |
 | 4 | Users and roles | Done | [phase-04](phases/phase-04-users-and-roles.md) |
 | 5 | Login and security | Done | [phase-05](phases/phase-05-login-and-security.md) |
-| 6 | Service requests | Next | |
-| 7–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
+| 6 | Service requests | Done | [phase-06](phases/phase-06-service-requests.md) |
+| 7 | Assignment | Next | |
+| 8–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
 
@@ -74,6 +75,23 @@ Upgraded `spring-security-crypto` to `spring-boot-starter-security`, which is wh
 this phase had to add the login endpoint and the filter chain in one go — the
 starter locks everything the moment it is on the classpath.
 
+### Phase 6 — Service requests
+
+The core feature. Locations were built first because `location_id` is a foreign
+key on a request and a free-text place would have needed migrating later.
+28 tests passing.
+
+Request numbers (`CF-2026-000042`) are derived from the database id rather than a
+counter table, so two simultaneous requests cannot collide without row locking.
+Cost: one INSERT then one UPDATE inside the same transaction.
+
+Pagination starts here rather than in Phase 11 — requests run into thousands,
+and retrofitting it after the list is slow is worse than doing it once.
+
+Visibility was checked against the running app, not only with mocks: a second
+student's list is empty, their read of another student's request is 404, and
+`?studentId=` is ignored because it is not a bound parameter.
+
 ## Problems hit and how they were fixed
 
 Recorded because each one costs an hour if you meet it cold.
@@ -126,15 +144,12 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 6: Service requests
+## Next — Phase 7: Assignment
 
-The core of the product — everything so far has been setup for this.
+- a department head assigns a request to a technician in their own department
+- reassignment keeps the old assignment as history, rather than overwriting it
+- status moves OPEN → ASSIGNED when the first assignment is made
+- a technician's request list narrows to "assigned to me"
+- only one active assignment per request at a time
 
-- a student files a request: title, description, category, location
-- a readable request number, not a raw database id
-- status starts at `OPEN`, priority defaults by category
-- a student sees only their own requests; staff see their department's
-- list and detail endpoints, filtered by status and category
-
-Assignment is Phase 7 and the status workflow is Phase 8. Phase 6 only creates
-and reads requests.
+The full status workflow is Phase 8. Phase 7 only decides who is responsible.
