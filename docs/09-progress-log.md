@@ -11,8 +11,9 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 1 | Project setup | Done | [phase-01](phases/phase-01-project-setup.md) |
 | 2 | Database connection | Done | [phase-02](phases/phase-02-database.md) |
 | 3 | Departments and categories | Done | [phase-03](phases/phase-03-departments-and-categories.md) |
-| 4 | Users and roles | Next | |
-| 5–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
+| 4 | Users and roles | Done | [phase-04](phases/phase-04-users-and-roles.md) |
+| 5 | Login and security | Next | |
+| 6–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
 
@@ -40,7 +41,25 @@ run from `pom.xml`. The suite therefore needs no running MySQL.
 
 First real feature, plus the shared error handling that every later feature uses.
 
-12 endpoints, 14 service tests, 16 tests total, all passing.
+12 endpoints, 14 service tests, 15 tests total, all passing.
+
+Testing policy for the rest of the project: test the business rules in the
+service layer and nothing else. No test class for controllers that only delegate,
+for DTOs, or for repository methods Spring Data generates. `contextLoads` stays
+as the single check that the application still wires together.
+
+### Phase 4 — Users and roles
+
+Four roles, BCrypt password hashing, 8 endpoints. 20 tests passing.
+
+Deviated from `02-database-design.md`: no `roles` table, the role is an enum
+column on `users`. Roles cannot be added at runtime because the code decides what
+each one may do, so a lookup table would only pretend to be configurable. Full
+reasoning in the phase doc.
+
+Only `spring-security-crypto` was added, not `spring-boot-starter-security`. The
+full starter turns on the filter chain and locks every endpoint before a login
+endpoint exists.
 
 ## Problems hit and how they were fixed
 
@@ -76,15 +95,17 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 |---|---|
 | `ddl-auto=update` manages the schema | Flyway migrations before deployment |
 | No authentication on any endpoint | Phase 5 |
+| Anyone can call `POST /api/users` and create an admin | Phase 5 — do not expose this build outside localhost |
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 4: Users and roles
+## Next — Phase 5: Login and security
 
-- `roles` and `users` tables
-- the four roles: STUDENT, TECHNICIAN, DEPARTMENT_HEAD, ADMIN
-- staff users belong to a department; students do not
-- passwords hashed with BCrypt from the very first insert, never stored plainly
-- user CRUD for the admin
+- `POST /api/auth/login` — email and password in, JWT out
+- JWT validated on every request by a filter, so the API stays stateless
+- endpoints locked down by role: only ADMIN manages users, departments and categories
+- `GET /api/auth/me` so the frontend knows who is signed in
+- a first admin account seeded on startup, since nobody can log in to create one
 
-Login and JWT stay in Phase 5. Phase 4 only creates the users.
+Phase 5 replaces `spring-security-crypto` with the full
+`spring-boot-starter-security`.

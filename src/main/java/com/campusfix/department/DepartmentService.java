@@ -6,6 +6,7 @@ import com.campusfix.common.exception.DuplicateResourceException;
 import com.campusfix.common.exception.ResourceNotFoundException;
 import com.campusfix.department.dto.DepartmentRequest;
 import com.campusfix.department.dto.DepartmentResponse;
+import com.campusfix.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,11 +17,14 @@ public class DepartmentService {
 
     private final DepartmentRepository departmentRepository;
     private final CategoryRepository categoryRepository;
+    private final UserRepository userRepository;
 
     public DepartmentService(DepartmentRepository departmentRepository,
-                             CategoryRepository categoryRepository) {
+                             CategoryRepository categoryRepository,
+                             UserRepository userRepository) {
         this.departmentRepository = departmentRepository;
         this.categoryRepository = categoryRepository;
+        this.userRepository = userRepository;
     }
 
     @Transactional(readOnly = true)
@@ -73,6 +77,12 @@ public class DepartmentService {
         if (categoryRepository.existsByDepartmentIdAndActiveTrue(id)) {
             throw new BusinessRuleException(
                     "Move or deactivate this department's categories before deactivating it");
+        }
+        // Staff are checked too: an active technician with no working department
+        // would have nowhere to receive assignments from.
+        if (userRepository.existsByDepartmentIdAndActiveTrue(id)) {
+            throw new BusinessRuleException(
+                    "Move or deactivate this department's staff before deactivating it");
         }
         department.deactivate();
     }

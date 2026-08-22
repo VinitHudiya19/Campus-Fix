@@ -14,7 +14,7 @@ opened the code.
 | [01](phase-01-project-setup.md) | Project setup | Done |
 | [02](phase-02-database.md) | Database connection | Done |
 | [03](phase-03-departments-and-categories.md) | Departments and categories | Done |
-| 04 | Users and roles | Not started |
+| [04](phase-04-users-and-roles.md) | Users and roles | Done |
 | 05 | Login and security | Not started |
 | 06 | Service requests | Not started |
 | 07 | Assignment | Not started |

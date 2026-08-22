@@ -6,6 +6,7 @@ import com.campusfix.common.exception.DuplicateResourceException;
 import com.campusfix.common.exception.ResourceNotFoundException;
 import com.campusfix.department.dto.DepartmentRequest;
 import com.campusfix.department.dto.DepartmentResponse;
+import com.campusfix.user.UserRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -34,6 +35,9 @@ class DepartmentServiceTest {
 
     @Mock
     private CategoryRepository categoryRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private DepartmentService departmentService;
@@ -101,6 +105,7 @@ class DepartmentServiceTest {
         Department department = departmentWithId(1L, "IT Support");
         when(departmentRepository.findById(1L)).thenReturn(Optional.of(department));
         when(categoryRepository.existsByDepartmentIdAndActiveTrue(1L)).thenReturn(false);
+        when(userRepository.existsByDepartmentIdAndActiveTrue(1L)).thenReturn(false);
 
         departmentService.deactivate(1L);
 

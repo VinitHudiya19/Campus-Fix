@@ -166,13 +166,109 @@ Deactivates. 204.
 
 ---
 
-## Users — Planned (Phase 4)
+## Users — Implemented
 
-    GET    /api/users
-    POST   /api/users
-    GET    /api/users/{id}
-    PUT    /api/users/{id}
-    DELETE /api/users/{id}
+No response ever contains a password or a password hash.
+
+### `GET /api/users`
+
+| Query param | Type | Default | Meaning |
+|---|---|---|---|
+| `role` | enum | none | `STUDENT`, `TECHNICIAN`, `DEPARTMENT_HEAD`, `ADMIN` |
+| `departmentId` | long | none | Only staff of that department |
+| `activeOnly` | boolean | `false` | Only active users |
+
+```json
+[
+  {
+    "id": 2,
+    "fullName": "Amit Sharma",
+    "email": "amit@college.edu",
+    "role": "TECHNICIAN",
+    "roleLabel": "Technician",
+    "departmentId": 1,
+    "departmentName": "IT Support",
+    "active": true
+  }
+]
+```
+
+`departmentId` and `departmentName` are `null` for students and admins.
+
+### `GET /api/users/roles`
+
+Fills role dropdowns without hardcoding the list in JavaScript.
+
+```json
+[
+  { "value": "STUDENT", "label": "Student", "departmentRequired": false },
+  { "value": "TECHNICIAN", "label": "Technician", "departmentRequired": true },
+  { "value": "DEPARTMENT_HEAD", "label": "Department Head", "departmentRequired": true },
+  { "value": "ADMIN", "label": "Administrator", "departmentRequired": false }
+]
+```
+
+`departmentRequired` lets the form show or hide the department field as soon as a
+role is chosen, using the same rule the server enforces.
+
+### `GET /api/users/{id}`
+
+200 with the user, or 404.
+
+### `POST /api/users`
+
+```json
+{
+  "fullName": "Amit Sharma",
+  "email": "amit@college.edu",
+  "password": "tech1234",
+  "role": "TECHNICIAN",
+  "departmentId": 1
+}
+```
+
+| Field | Rules |
+|---|---|
+| `fullName` | required, max 120 |
+| `email` | required, valid email, max 160, unique — stored lowercase |
+| `password` | required, 8–72 characters, stored as a BCrypt hash |
+| `role` | required, one of the four values |
+| `departmentId` | required for `TECHNICIAN` and `DEPARTMENT_HEAD`, must be omitted for `STUDENT` and `ADMIN` |
+
+201 Created with `Location: /api/users/{id}`.
+404 if the department does not exist.
+409 if the email is already registered, regardless of capitalisation.
+422 if the role/department combination breaks the rule above, or the department is inactive.
+
+### `PUT /api/users/{id}`
+
+```json
+{ "fullName": "Amit Sharma", "role": "DEPARTMENT_HEAD", "departmentId": 1 }
+```
+
+No `password` and no `email`. A profile edit cannot overwrite a password hash,
+and the email is the login identity.
+
+### `PUT /api/users/{id}/password`
+
+```json
+{ "newPassword": "newpass123" }
+```
+
+Admin reset. 204. A self-service change that checks the old password arrives in
+Phase 5, once the API knows who is calling.
+
+### `DELETE /api/users/{id}`
+
+Deactivates. 204. The row is kept because requests, comments and assignments all
+point at it.
+
+### `POST /api/users/{id}/activate`
+
+204.
+422 if the user is staff and their department is inactive.
+
+---
 
 ## Authentication — Planned (Phase 5)
 

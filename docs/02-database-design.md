@@ -34,20 +34,31 @@ exist under both Electrical and Hostel Maintenance.
 
 ## Initial entities
 
-### users
-- id
-- name
-- email
-- password_hash
-- role_id
-- department_id nullable
-- active
-- created_at
-- updated_at
+### users — built in Phase 4
 
-### roles
-- id
-- name
+```sql
+users(id, full_name, email UNIQUE, password_hash, role, department_id FK NULL,
+      active, created_at, updated_at)
+```
+
+`role` is a `VARCHAR(30)` holding the enum name: `STUDENT`, `TECHNICIAN`,
+`DEPARTMENT_HEAD` or `ADMIN`.
+
+`department_id` is null for students and admins, and required for technicians and
+department heads. The database cannot express "required for two roles, forbidden
+for the other two", so that rule is enforced in `UserService`.
+
+### ~~roles~~ — dropped, see Phase 4
+
+The original plan had a `roles` lookup table with `users.role_id` pointing at it.
+That was dropped. A lookup table earns its place when rows can be added at
+runtime, and roles cannot: the application code decides what each role may do, so
+a fifth row inserted by hand would have no permissions attached to it anywhere.
+
+Storing the name directly also removes a join from every user lookup and keeps
+`SELECT role FROM users` readable.
+
+Reasoning in full: [phases/phase-04-users-and-roles.md](phases/phase-04-users-and-roles.md).
 
 ### departments
 - id
