@@ -13,6 +13,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
+    boolean existsByRole(Role role);
+
+    /** Used by login, which needs the department name for the response. */
+    @Query("select u from User u left join fetch u.department where u.email = :email")
+    Optional<User> findByEmailWithDepartment(@Param("email") String email);
+
     boolean existsByDepartmentIdAndActiveTrue(Long departmentId);
 
     /**

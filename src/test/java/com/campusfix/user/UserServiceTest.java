@@ -2,6 +2,7 @@ package com.campusfix.user;
 
 import com.campusfix.common.exception.BusinessRuleException;
 import com.campusfix.common.exception.DuplicateResourceException;
+import com.campusfix.common.security.CurrentUser;
 import com.campusfix.department.Department;
 import com.campusfix.department.DepartmentRepository;
 import com.campusfix.user.dto.CreateUserRequest;
@@ -40,7 +41,7 @@ class UserServiceTest {
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     private UserService userService() {
-        return new UserService(userRepository, departmentRepository, passwordEncoder);
+        return new UserService(userRepository, departmentRepository, passwordEncoder, new CurrentUser());
     }
 
     @Test

@@ -20,6 +20,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <jjwt.version>0.12.6</jjwt.version>
     </properties>
 
     <dependencies>
@@ -39,13 +40,35 @@
         </dependency>
 
         <!--
-            Password hashing only. The full spring-boot-starter-security would
-            switch on the login filter chain and lock every endpoint before the
-            login endpoint exists, so it waits until Phase 5.
+            Phase 5 upgraded this from the standalone spring-security-crypto to
+            the full starter, now that there is a login endpoint to let people in.
         -->
         <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-crypto</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!--
+            JWT support. jjwt splits into three artifacts on purpose: only the
+            api jar is compiled against, while impl and jackson are runtime only,
+            so application code cannot accidentally depend on internals.
+        -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
 
         <dependency>

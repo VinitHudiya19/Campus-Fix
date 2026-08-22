@@ -7,6 +7,10 @@ and will be filled in with real request/response bodies during its phase.
 
 All timestamps are UTC, serialised as ISO-8601 (`2026-08-22T17:26:53.331Z`).
 
+Every endpoint requires `Authorization: Bearer <token>` unless it is marked
+public. See [Authentication](#authentication--implemented) for how to get one and
+which role each endpoint needs.
+
 ---
 
 ## Error format
@@ -35,6 +39,8 @@ Every failure returns the same shape, whatever caused it.
 | 201 | Created — includes a `Location` header |
 | 204 | Success, nothing to return (deactivate, activate) |
 | 400 | Request was malformed or failed field validation |
+| 401 | Not signed in, or the token is invalid or expired |
+| 403 | Signed in, but this role is not allowed to do it |
 | 404 | The addressed resource does not exist |
 | 409 | Conflicts with existing data, e.g. a duplicate name |
 | 422 | Well formed and understood, but a business rule forbids it |
@@ -168,6 +174,8 @@ Deactivates. 204.
 
 ## Users — Implemented
 
+**All of these require the `ADMIN` role.** Any other signed-in user gets 403.
+
 No response ever contains a password or a password hash.
 
 ### `GET /api/users`
@@ -263,6 +271,10 @@ Phase 5, once the API knows who is calling.
 Deactivates. 204. The row is kept because requests, comments and assignments all
 point at it.
 
+422 if an admin tries to deactivate their **own** account. Together with the same
+guard on role changes in `PUT /api/users/{id}`, this guarantees at least one
+working administrator always remains.
+
 ### `POST /api/users/{id}/activate`
 
 204.
@@ -270,11 +282,78 @@ point at it.
 
 ---
 
-## Authentication — Planned (Phase 5)
+## Authentication — Implemented
 
-    POST /api/auth/login
-    POST /api/auth/register
-    GET  /api/auth/me
+Every endpoint except those marked public needs a header:
+
+```
+Authorization: Bearer <token>
+```
+
+### `POST /api/auth/login` — public
+
+```json
+{ "email": "admin@campusfix.local", "password": "admin12345" }
+```
+
+```json
+{
+  "token": "eyJhbGciOiJIUzM4NCJ9...",
+  "expiresInSeconds": 28800,
+  "user": {
+    "id": 3,
+    "fullName": "CampusFix Administrator",
+    "email": "admin@campusfix.local",
+    "role": "ADMIN",
+    "roleLabel": "Administrator",
+    "departmentId": null,
+    "departmentName": null
+  }
+}
+```
+
+Email is matched case-insensitively.
+401 for a wrong email **or** a wrong password — the same message for both, so the
+response cannot be used to discover which addresses are registered.
+403 if the account is deactivated.
+
+### `GET /api/auth/me`
+
+The signed-in user, read fresh from the database rather than from the token, so a
+change made since login shows immediately.
+
+### `PUT /api/auth/password`
+
+```json
+{ "currentPassword": "admin12345", "newPassword": "newpass123" }
+```
+
+204. 401 if the current password is wrong.
+Different from `PUT /api/users/{id}/password`, which is an admin resetting
+somebody else's password and does not require the old one.
+
+### There is no `/api/auth/register`
+
+Originally planned, then dropped. Accounts are created by an admin through
+`POST /api/users`. A college issues accounts to its own students and staff — open
+self-registration would let anyone create one.
+
+### Who can reach what
+
+| Endpoint | Who |
+|---|---|
+| `POST /api/auth/login`, `GET /api/hello` | Anyone |
+| `GET /api/departments/**`, `GET /api/categories/**` | Any signed-in user |
+| Other methods on departments/categories | `ADMIN` |
+| `/api/users/**` | `ADMIN` |
+| `/api/auth/me`, `/api/auth/password` | Any signed-in user |
+
+| Situation | Status | Message |
+|---|---|---|
+| Missing or invalid token | 401 | `You need to sign in to do that` |
+| Valid token, insufficient role | 403 | `Your role does not allow that action` |
+
+401 means "I do not know who you are". 403 means "I know who you are, and no".
 
 ## Service requests — Planned (Phase 6 onwards)
 

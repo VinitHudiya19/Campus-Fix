@@ -12,8 +12,9 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 2 | Database connection | Done | [phase-02](phases/phase-02-database.md) |
 | 3 | Departments and categories | Done | [phase-03](phases/phase-03-departments-and-categories.md) |
 | 4 | Users and roles | Done | [phase-04](phases/phase-04-users-and-roles.md) |
-| 5 | Login and security | Next | |
-| 6–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
+| 5 | Login and security | Done | [phase-05](phases/phase-05-login-and-security.md) |
+| 6 | Service requests | Next | |
+| 7–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
 
@@ -61,6 +62,18 @@ Only `spring-security-crypto` was added, not `spring-boot-starter-security`. The
 full starter turns on the filter chain and locks every endpoint before a login
 endpoint exists.
 
+### Phase 5 — Login and security
+
+JWT authentication, role-based access, seeded first admin. 23 tests passing.
+
+Verified against the running app rather than assumed: a token with its role
+edited to ADMIN, an `alg:none` token, and a token signed with another key are all
+rejected with 401.
+
+Upgraded `spring-security-crypto` to `spring-boot-starter-security`, which is why
+this phase had to add the login endpoint and the filter chain in one go — the
+starter locks everything the moment it is on the classpath.
+
 ## Problems hit and how they were fixed
 
 Recorded because each one costs an hour if you meet it cold.
@@ -85,6 +98,19 @@ Fix: `GlobalExceptionHandler` now extends `ResponseEntityExceptionHandler` and
 overrides `handleExceptionInternal`, so framework errors and domain errors come
 back identical.
 
+**Spring Boot printed a random security password at every startup.**
+With Spring Security on the classpath and no `UserDetailsService` bean, Boot
+auto-configures an in-memory user. Misleading, since this app authenticates
+against the `users` table.
+Fix: excluded `UserDetailsServiceAutoConfiguration` in `application.properties`.
+
+**A smoke test appeared to show a tampered token being accepted.**
+Appending a character to a valid signature still returned 200. The cause was the
+test, not the code: base64 decoding discards an incomplete trailing character
+group, so the signature bytes were unchanged. Editing the *payload* — the attack
+that actually matters — is correctly rejected. Lesson: test the attack, not a
+mutation of the string.
+
 **MySQL `DATETIME` stores no timezone.**
 Added `spring.jpa.properties.hibernate.jdbc.time_zone=UTC` so timestamps do not
 shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
@@ -94,18 +120,21 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 | Limitation | Planned answer |
 |---|---|
 | `ddl-auto=update` manages the schema | Flyway migrations before deployment |
-| No authentication on any endpoint | Phase 5 |
-| Anyone can call `POST /api/users` and create an admin | Phase 5 — do not expose this build outside localhost |
+| A deactivated user's existing token works until it expires | Accepted cost of stateless JWT — reasoning in [phase-05](phases/phase-05-login-and-security.md) |
+| No rate limiting on login | Needs infrastructure this project does not have; noted, not solved |
+| The JWT secret has a committed development default | `JWT_SECRET` must be set from the environment on any real server |
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 5: Login and security
+## Next — Phase 6: Service requests
 
-- `POST /api/auth/login` — email and password in, JWT out
-- JWT validated on every request by a filter, so the API stays stateless
-- endpoints locked down by role: only ADMIN manages users, departments and categories
-- `GET /api/auth/me` so the frontend knows who is signed in
-- a first admin account seeded on startup, since nobody can log in to create one
+The core of the product — everything so far has been setup for this.
 
-Phase 5 replaces `spring-security-crypto` with the full
-`spring-boot-starter-security`.
+- a student files a request: title, description, category, location
+- a readable request number, not a raw database id
+- status starts at `OPEN`, priority defaults by category
+- a student sees only their own requests; staff see their department's
+- list and detail endpoints, filtered by status and category
+
+Assignment is Phase 7 and the status workflow is Phase 8. Phase 6 only creates
+and reads requests.

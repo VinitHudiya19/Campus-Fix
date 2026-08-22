@@ -15,7 +15,7 @@ opened the code.
 | [02](phase-02-database.md) | Database connection | Done |
 | [03](phase-03-departments-and-categories.md) | Departments and categories | Done |
 | [04](phase-04-users-and-roles.md) | Users and roles | Done |
-| 05 | Login and security | Not started |
+| [05](phase-05-login-and-security.md) | Login and security | Done |
 | 06 | Service requests | Not started |
 | 07 | Assignment | Not started |
 | 08 | Status workflow | Not started |

@@ -47,6 +47,18 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request);
     }
 
+    /** Wrong email or password. 401 means "we do not know who you are". */
+    @ExceptionHandler(AuthenticationFailedException.class)
+    public ResponseEntity<ApiError> handleAuthenticationFailed(AuthenticationFailedException ex, WebRequest request) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request);
+    }
+
+    /** Correct password, deactivated account. 403 means "we know you, and no". */
+    @ExceptionHandler(AccountDisabledException.class)
+    public ResponseEntity<ApiError> handleAccountDisabled(AccountDisabledException ex, WebRequest request) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), request);
+    }
+
     /**
      * Last resort. The real cause is logged for the developer, while the client
      * gets a neutral message so stack traces and SQL never leak through the API.

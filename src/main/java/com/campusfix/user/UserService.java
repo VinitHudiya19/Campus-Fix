@@ -3,6 +3,7 @@ package com.campusfix.user;
 import com.campusfix.common.exception.BusinessRuleException;
 import com.campusfix.common.exception.DuplicateResourceException;
 import com.campusfix.common.exception.ResourceNotFoundException;
+import com.campusfix.common.security.CurrentUser;
 import com.campusfix.department.Department;
 import com.campusfix.department.DepartmentRepository;
 import com.campusfix.user.dto.ChangePasswordRequest;
@@ -21,13 +22,16 @@ public class UserService {
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CurrentUser currentUser;
 
     public UserService(UserRepository userRepository,
                        DepartmentRepository departmentRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       CurrentUser currentUser) {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.passwordEncoder = passwordEncoder;
+        this.currentUser = currentUser;
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +67,11 @@ public class UserService {
     @Transactional
     public UserResponse update(Long id, UpdateUserRequest request) {
         User user = getOrThrow(id);
+
+        if (isSelf(id) && request.role() != user.getRole()) {
+            throw new BusinessRuleException("You cannot change your own role");
+        }
+
         Department department = resolveDepartment(request.role(), request.departmentId());
         user.changeProfile(request.fullName().trim(), request.role(), department);
         return UserResponse.from(user);
@@ -80,6 +89,9 @@ public class UserService {
      */
     @Transactional
     public void deactivate(Long id) {
+        if (isSelf(id)) {
+            throw new BusinessRuleException("You cannot deactivate your own account");
+        }
         getOrThrow(id).deactivate();
     }
 
@@ -120,6 +132,18 @@ public class UserService {
                     "Department '" + department.getName() + "' is inactive and cannot take new staff");
         }
         return department;
+    }
+
+    /**
+     * Together, the two self-guards keep at least one working administrator alive.
+     * An admin cannot deactivate themselves and cannot demote themselves, so the
+     * only way to remove an admin is for a *different* admin to do it — which
+     * means that other admin is still there afterwards.
+     */
+    private boolean isSelf(Long id) {
+        return currentUser.find()
+                .map(signedIn -> signedIn.id().equals(id))
+                .orElse(false);
     }
 
     private User getOrThrow(Long id) {
