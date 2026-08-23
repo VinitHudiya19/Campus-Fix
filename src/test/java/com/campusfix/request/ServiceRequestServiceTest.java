@@ -1,5 +1,6 @@
 package com.campusfix.request;
 
+import com.campusfix.activity.ActivityLogService;
 import com.campusfix.category.Category;
 import com.campusfix.category.CategoryRepository;
 import com.campusfix.common.exception.BusinessRuleException;
@@ -10,9 +11,12 @@ import com.campusfix.department.Department;
 import com.campusfix.location.LocationRepository;
 import com.campusfix.request.dto.CreateRequestRequest;
 import com.campusfix.request.dto.RequestDetailResponse;
+import com.campusfix.sla.SlaService;
+import com.campusfix.sla.SlaState;
 import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -27,6 +31,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -49,10 +54,29 @@ class ServiceRequestServiceTest {
     private UserRepository userRepository;
     @Mock
     private CurrentUser currentUser;
+    @Mock
+    private ActivityLogService activityLog;
+    @Mock
+    private SlaService slaService;
+
+    /**
+     * Lenient because most tests here never reach the point of building a
+     * response — they assert that a rule rejected the request first.
+     */
+    @BeforeEach
+    void stubSlaLookups() {
+        lenient().when(slaService.stateOf(any())).thenReturn(SlaState.ON_TRACK);
+        lenient().when(slaService.deadlineFor(any(), any()))
+                .thenAnswer(call -> {
+                    Priority priority = call.getArgument(0);
+                    Instant from = call.getArgument(1);
+                    return from.plus(priority.getSlaHours(), java.time.temporal.ChronoUnit.HOURS);
+                });
+    }
 
     private ServiceRequestService service() {
         return new ServiceRequestService(requestRepository, categoryRepository, locationRepository,
-                userRepository, currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
+                userRepository, activityLog, slaService, currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

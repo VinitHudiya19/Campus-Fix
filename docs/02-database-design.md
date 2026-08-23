@@ -144,30 +144,55 @@ one transaction, so they cannot drift.
 - file_size
 - created_at
 
-### activity_logs
-- id
-- request_id
-- actor_id
-- event_type
-- old_value nullable
-- new_value nullable
-- metadata nullable
-- created_at
+### activity_logs — built in Phase 8
 
-### sla_configs
-- id
-- priority
-- duration_hours
-- warning_percentage
-- active
+```sql
+activity_logs(id, request_id FK, actor_id FK NULL, type,
+              old_value NULL, new_value NULL, message, created_at)
+```
 
-### escalations
-- id
-- request_id
-- from_user_id
-- to_user_id/department_id
-- reason
-- created_at
+Append only. Nothing updates or deletes a row here — an audit trail that can be
+edited afterwards is worth nothing.
+
+`actor_id` is nullable because the scheduled SLA check acts with no person behind
+it. The planned `metadata` column was dropped; nothing needed it, and a
+free-form JSON blob nobody reads is a place for mess to accumulate.
+
+`service_requests` gained `resolved_at`, `closed_at`, `resolution_note` and
+`rejection_reason` in the same phase.
+
+### sla_configs — built in Phase 9
+
+```sql
+sla_configs(id, priority UNIQUE, duration_hours, warning_percentage,
+            created_at, updated_at)
+```
+
+One row per priority, seeded with the spec's defaults on first startup and never
+overwritten again, so an edited target survives a restart.
+
+The planned `active` flag was dropped: a deactivated SLA row raises a question
+nobody has an answer to — what is the target then?
+
+Note what is **not** here: no `sla_state` column on a request. The state is a
+function of the current time and is computed on read. See
+[phases/phase-09-sla-and-escalation.md](phases/phase-09-sla-and-escalation.md).
+
+### escalations — built in Phase 9
+
+```sql
+escalations(id, request_id FK, level, reason, created_at,
+            UNIQUE KEY uk_escalation_request_level (request_id, level))
+```
+
+`level` is `DEPARTMENT_HEAD` or `ADMIN`. The planned `from_user_id` and
+`to_user_id` were dropped — an escalation goes to a *role over a department*, not
+to a named person, and storing a specific user would go stale the moment staff
+change.
+
+The unique key is what stops the scheduled check escalating the same request
+every fifteen minutes, and is enforced in the database because the scheduler runs
+on every application instance.
 - resolved_at nullable
 
 ### feedback

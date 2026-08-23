@@ -1,5 +1,6 @@
 package com.campusfix.request;
 
+import com.campusfix.activity.ActivityLogService;
 import com.campusfix.category.Category;
 import com.campusfix.category.CategoryRepository;
 import com.campusfix.common.exception.BusinessRuleException;
@@ -12,6 +13,8 @@ import com.campusfix.request.dto.CreateRequestRequest;
 import com.campusfix.request.dto.PagedResponse;
 import com.campusfix.request.dto.RequestDetailResponse;
 import com.campusfix.request.dto.RequestSummaryResponse;
+import com.campusfix.sla.SlaService;
+import com.campusfix.sla.SlaSnapshot;
 import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
@@ -23,7 +26,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.time.temporal.ChronoUnit;
 
 @Service
 public class ServiceRequestService {
@@ -32,6 +34,8 @@ public class ServiceRequestService {
     private final CategoryRepository categoryRepository;
     private final LocationRepository locationRepository;
     private final UserRepository userRepository;
+    private final ActivityLogService activityLog;
+    private final SlaService slaService;
     private final CurrentUser currentUser;
     private final Clock clock;
 
@@ -39,12 +43,16 @@ public class ServiceRequestService {
                                  CategoryRepository categoryRepository,
                                  LocationRepository locationRepository,
                                  UserRepository userRepository,
+                                 ActivityLogService activityLog,
+                                 SlaService slaService,
                                  CurrentUser currentUser,
                                  Clock clock) {
         this.requestRepository = requestRepository;
         this.categoryRepository = categoryRepository;
         this.locationRepository = locationRepository;
         this.userRepository = userRepository;
+        this.activityLog = activityLog;
+        this.slaService = slaService;
         this.currentUser = currentUser;
         this.clock = clock;
     }
@@ -74,12 +82,16 @@ public class ServiceRequestService {
                 category,
                 location,
                 request.priority(),
-                now.plus(request.priority().getSlaHours(), ChronoUnit.HOURS));
+                // The deadline comes from the configurable SLA table now, not
+                // from a constant. Existing requests keep the date they were
+                // given, so changing the policy never rewrites a past promise.
+                slaService.deadlineFor(request.priority(), now));
 
         ServiceRequest saved = requestRepository.saveAndFlush(serviceRequest);
         saved.assignRequestNumber(buildRequestNumber(saved.getId(), now));
+        activityLog.recordCreated(saved, student);
 
-        return RequestDetailResponse.from(saved);
+        return RequestDetailResponse.from(saved, slaService.stateOf(saved));
     }
 
     @Transactional(readOnly = true)
@@ -94,7 +106,10 @@ public class ServiceRequestService {
                 scope.studentId(), scope.departmentId(), scope.technicianId(),
                 status, categoryId, priority, unassignedOnly, pageable);
 
-        return PagedResponse.of(page, RequestSummaryResponse::from);
+        // One snapshot for the whole page, so every row on screen is judged
+        // against the same instant and the same settings.
+        SlaSnapshot sla = slaService.snapshot();
+        return PagedResponse.of(page, request -> RequestSummaryResponse.from(request, sla.stateOf(request)));
     }
 
     /**
@@ -112,7 +127,7 @@ public class ServiceRequestService {
                 .filter(scope::permits)
                 .orElseThrow(() -> new ResourceNotFoundException("Request", id));
 
-        return RequestDetailResponse.from(request);
+        return RequestDetailResponse.from(request, slaService.stateOf(request));
     }
 
     /**

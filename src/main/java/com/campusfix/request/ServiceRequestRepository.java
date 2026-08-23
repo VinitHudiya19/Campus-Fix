@@ -6,6 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, Long> {
@@ -69,4 +71,23 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
     Optional<ServiceRequest> findByIdWithDetail(@Param("id") Long id);
 
     Optional<ServiceRequest> findByRequestNumber(String requestNumber);
+
+    /**
+     * Past its deadline and still genuinely unfinished.
+     *
+     * <p>RESOLVED is excluded as well as CLOSED and REJECTED: the technician has
+     * done the work and it is the student's turn, so chasing the department
+     * would be chasing the wrong people. It is still recorded as a missed target.
+     */
+    @Query("""
+            select r from ServiceRequest r
+            join fetch r.category c
+            join fetch c.department d
+            where r.dueAt < :now
+              and r.status not in (com.campusfix.request.RequestStatus.RESOLVED,
+                                   com.campusfix.request.RequestStatus.CLOSED,
+                                   com.campusfix.request.RequestStatus.REJECTED)
+            order by r.dueAt asc
+            """)
+    List<ServiceRequest> findOverdue(@Param("now") Instant now);
 }

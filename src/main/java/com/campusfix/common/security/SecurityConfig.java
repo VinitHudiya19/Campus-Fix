@@ -70,6 +70,12 @@ public class SecurityConfig {
                         // requests only", so it must not pretend to.
                         .requestMatchers("/api/requests/**").authenticated()
 
+                        // Any signed-in user may read the SLA targets — a
+                        // student is entitled to know what turnaround the
+                        // college promises. Changing them is college policy.
+                        .requestMatchers(HttpMethod.GET, "/api/sla").authenticated()
+                        .requestMatchers("/api/sla/**").hasRole("ADMIN")
+
                         // Account management is admin-only. The one exception is
                         // the signed-in user's own details, served from /api/auth.
                         .requestMatchers("/api/users/**").hasRole("ADMIN")

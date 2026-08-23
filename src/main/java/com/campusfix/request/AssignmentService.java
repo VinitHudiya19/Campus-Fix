@@ -1,5 +1,6 @@
 package com.campusfix.request;
 
+import com.campusfix.activity.ActivityLogService;
 import com.campusfix.common.exception.BusinessRuleException;
 import com.campusfix.common.exception.ResourceNotFoundException;
 import com.campusfix.common.security.AuthenticatedUser;
@@ -7,6 +8,7 @@ import com.campusfix.common.security.CurrentUser;
 import com.campusfix.request.dto.AssignRequest;
 import com.campusfix.request.dto.AssignmentResponse;
 import com.campusfix.request.dto.RequestDetailResponse;
+import com.campusfix.sla.SlaService;
 import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
@@ -30,17 +32,23 @@ public class AssignmentService {
     private final ServiceRequestRepository requestRepository;
     private final AssignmentRepository assignmentRepository;
     private final UserRepository userRepository;
+    private final ActivityLogService activityLog;
+    private final SlaService slaService;
     private final CurrentUser currentUser;
     private final Clock clock;
 
     public AssignmentService(ServiceRequestRepository requestRepository,
                              AssignmentRepository assignmentRepository,
                              UserRepository userRepository,
+                             ActivityLogService activityLog,
+                             SlaService slaService,
                              CurrentUser currentUser,
                              Clock clock) {
         this.requestRepository = requestRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
+        this.activityLog = activityLog;
+        this.slaService = slaService;
         this.currentUser = currentUser;
         this.clock = clock;
     }
@@ -70,10 +78,12 @@ public class AssignmentService {
         User assigner = userRepository.findById(signedIn.id())
                 .orElseThrow(() -> new ResourceNotFoundException("User", signedIn.id()));
 
-        assignmentRepository.save(new Assignment(request, technician, assigner, now, trimOrNull(command.note())));
+        String note = trimOrNull(command.note());
+        assignmentRepository.save(new Assignment(request, technician, assigner, now, note));
         request.assignTo(technician, now);
+        activityLog.recordAssigned(request, assigner, technician, note);
 
-        return RequestDetailResponse.from(request);
+        return RequestDetailResponse.from(request, slaService.stateOf(request));
     }
 
     /** Sends a request back to the unassigned queue. */
@@ -87,10 +97,15 @@ public class AssignmentService {
         }
 
         Instant now = clock.instant();
+        User previous = request.getAssignedTechnician();
+        User actor = userRepository.findById(signedIn.id())
+                .orElseThrow(() -> new ResourceNotFoundException("User", signedIn.id()));
+
         assignmentRepository.findActiveForRequest(requestId).ifPresent(active -> active.end(now));
         request.clearAssignment();
+        activityLog.recordUnassigned(request, actor, previous);
 
-        return RequestDetailResponse.from(request);
+        return RequestDetailResponse.from(request, slaService.stateOf(request));
     }
 
     /**

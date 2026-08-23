@@ -1,5 +1,6 @@
 package com.campusfix.request;
 
+import com.campusfix.activity.ActivityLogService;
 import com.campusfix.category.Category;
 import com.campusfix.common.exception.BusinessRuleException;
 import com.campusfix.common.exception.ResourceNotFoundException;
@@ -8,9 +9,12 @@ import com.campusfix.common.security.CurrentUser;
 import com.campusfix.department.Department;
 import com.campusfix.request.dto.AssignRequest;
 import com.campusfix.request.dto.RequestDetailResponse;
+import com.campusfix.sla.SlaService;
+import com.campusfix.sla.SlaState;
 import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -25,6 +29,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -48,10 +53,20 @@ class AssignmentServiceTest {
     private UserRepository userRepository;
     @Mock
     private CurrentUser currentUser;
+    @Mock
+    private ActivityLogService activityLog;
+    @Mock
+    private SlaService slaService;
+
+    @BeforeEach
+    void stubSlaState() {
+        // Most tests here stop at a rejected rule and never build a response.
+        lenient().when(slaService.stateOf(any())).thenReturn(SlaState.ON_TRACK);
+    }
 
     private AssignmentService service() {
         return new AssignmentService(requestRepository, assignmentRepository, userRepository,
-                currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
+                activityLog, slaService, currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

@@ -587,11 +587,147 @@ no emails — there is no way to enumerate staff elsewhere.
 `openRequests` counts current assignments that are not `CLOSED` or `REJECTED`, so
 a technician who closed two hundred requests this year does not look busy.
 
-### Planned — Phase 8
+---
 
-    PUT  /api/requests/{id}/status             Phase 8
-    POST /api/requests/{id}/reopen             Phase 8
-    POST /api/requests/{id}/confirm-resolution Phase 8
+## Status workflow — Implemented
+
+One endpoint per legal move. There is no generic `PUT /status`: that would let a
+client ask for any status and rely on the server to refuse, so the URL would
+promise more than the system allows.
+
+| Method | Path | Who | From → To |
+|---|---|---|---|
+| POST | `/api/requests/{id}/start` | Assigned technician, or the department head/admin | `ASSIGNED`/`REOPENED` → `IN_PROGRESS` |
+| POST | `/api/requests/{id}/resolve` | Same | `IN_PROGRESS` → `RESOLVED` |
+| POST | `/api/requests/{id}/reject` | Department head or admin | `OPEN`/`ASSIGNED`/`IN_PROGRESS`/`REOPENED` → `REJECTED` |
+| POST | `/api/requests/{id}/confirm` | **The reporting student only** | `RESOLVED` → `CLOSED` |
+| POST | `/api/requests/{id}/reopen` | **The reporting student only** | `RESOLVED` → `REOPENED` |
+
+Body, where a note applies:
+
+```json
+{ "note": "Replaced the access point" }
+```
+
+| Action | Note |
+|---|---|
+| `start` | not required |
+| `resolve` | **required** — what was done |
+| `reject` | **required** — why it was refused |
+| `confirm` | not required |
+| `reopen` | **required** — what is still wrong |
+
+All five return the whole updated request.
+422 if the move is illegal from the current status, or a required note is blank.
+404 if the caller is not entitled to make that move — so an error message never
+reveals the state of a request someone may not see.
+
+Confirming and reopening are the student's alone. An admin cannot close a request
+on their behalf: nobody else can truthfully say whether the problem is fixed.
+
+### `GET /api/requests/{id}/available-actions`
+
+```json
+[
+  { "action": "CONFIRM", "label": "Confirm it is fixed", "noteRequired": false },
+  { "action": "REOPEN",  "label": "Still not fixed",     "noteRequired": true }
+]
+```
+
+Filtered by both the current status **and** the caller, so the interface can
+never offer a button the server will refuse. The same resolved request returns an
+empty list for staff.
+
+### `GET /api/requests/{id}/timeline`
+
+Everything that has happened, oldest first. Readable by anyone who can read the
+request.
+
+```json
+[
+  { "type": "REQUEST_CREATED", "typeLabel": "Reported", "actorName": "Priya Nair",
+    "message": "Priya Nair reported this problem", "createdAt": "..." },
+  { "type": "STATUS_CHANGED", "typeLabel": "Status changed", "actorName": "Amit Sharma",
+    "oldValue": "IN_PROGRESS", "newValue": "RESOLVED",
+    "message": "Amit Sharma marked this as resolved — Replaced the access point", "createdAt": "..." },
+  { "type": "ESCALATED", "typeLabel": "Escalated", "actorName": "System",
+    "message": "Escalated to department head: Past its high deadline and still unresolved", "createdAt": "..." }
+]
+```
+
+`actorName` is `"System"` for events with no person behind them.
+
+---
+
+## SLA and escalation — Implemented
+
+Every request response now carries:
+
+```json
+{ "slaState": "BREACHED", "slaStateLabel": "Breached", "dueAt": "2026-08-22T02:40:00Z" }
+```
+
+| State | Meaning |
+|---|---|
+| `ON_TRACK` | Plenty of time left |
+| `DUE_SOON` | Past the warning threshold, not yet late |
+| `BREACHED` | Deadline gone, still not fixed |
+| `MET` | Finished inside the deadline — final |
+| `MISSED` | Finished, but late — final |
+
+The state is computed on every read, never stored. A finished request's verdict
+never changes again.
+
+### `GET /api/sla`
+
+Any signed-in user — a student is entitled to know what turnaround the college
+promises.
+
+```json
+[
+  { "id": 1, "priority": "LOW", "priorityLabel": "Low", "durationHours": 72, "warningPercentage": 75 },
+  { "id": 3, "priority": "HIGH", "priorityLabel": "High", "durationHours": 24, "warningPercentage": 75 }
+]
+```
+
+### `PUT /api/sla/{priority}` — `ADMIN`
+
+```json
+{ "durationHours": 12, "warningPercentage": 80 }
+```
+
+| Field | Rules |
+|---|---|
+| `durationHours` | 1–8760 |
+| `warningPercentage` | 1–99 — a warning at 100% is the breach itself |
+
+**Only affects requests created afterwards.** Existing requests keep the deadline
+they were given, because a promise already made should not move.
+
+### `POST /api/sla/check-now` — `ADMIN`
+
+Runs the overdue check immediately instead of waiting for the timer.
+
+```json
+{ "escalated": 2 }
+```
+
+Safe to call repeatedly — an already-escalated request is skipped, so a second
+call returns `0`.
+
+### `GET /api/requests/{id}/escalations`
+
+```json
+[
+  { "level": "DEPARTMENT_HEAD", "levelLabel": "Department head",
+    "reason": "Past its high deadline and still unresolved", "createdAt": "..." },
+  { "level": "ADMIN", "levelLabel": "Administration",
+    "reason": "Still unresolved 24 hours after the deadline", "createdAt": "..." }
+]
+```
+
+Escalation happens on its own, every fifteen minutes by default. A `RESOLVED`
+request is never escalated — the work is done and it is the student's turn.
 
 ## API documentation
 

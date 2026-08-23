@@ -95,6 +95,22 @@ public class ServiceRequest extends Auditable {
     @Column(name = "assigned_at")
     private Instant assignedAt;
 
+    /** Set when a technician says it is fixed. Cleared if the student reopens it. */
+    @Column(name = "resolved_at")
+    private Instant resolvedAt;
+
+    /** Set when the student confirms, or when staff reject. The end of the line. */
+    @Column(name = "closed_at")
+    private Instant closedAt;
+
+    /** What the technician actually did, in their own words. */
+    @Column(name = "resolution_note", length = 1000)
+    private String resolutionNote;
+
+    /** Why the request was refused. Required when rejecting, so nobody is left guessing. */
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     protected ServiceRequest() {
         // required by JPA
     }
@@ -164,6 +180,22 @@ public class ServiceRequest extends Auditable {
         return assignedAt;
     }
 
+    public Instant getResolvedAt() {
+        return resolvedAt;
+    }
+
+    public Instant getClosedAt() {
+        return closedAt;
+    }
+
+    public String getResolutionNote() {
+        return resolutionNote;
+    }
+
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
     /**
      * Records the new owner and moves an untouched request to ASSIGNED.
      *
@@ -178,6 +210,37 @@ public class ServiceRequest extends Auditable {
         if (status == RequestStatus.OPEN) {
             status = RequestStatus.ASSIGNED;
         }
+    }
+
+    /**
+     * Moves the request to a new status and keeps the timestamps that go with it.
+     *
+     * <p>Whether the move is legal at all, and whether this person may make it,
+     * is decided by {@link StatusAction} before this is called. The entity's job
+     * is only to stay internally consistent once the decision is made.
+     */
+    void applyStatus(RequestStatus next, String note, Instant at) {
+        switch (next) {
+            case RESOLVED -> {
+                this.resolvedAt = at;
+                this.resolutionNote = note;
+            }
+            case CLOSED -> this.closedAt = at;
+            case REJECTED -> {
+                this.closedAt = at;
+                this.rejectionReason = note;
+            }
+            // Reopening undoes the resolution: the problem was never fixed, so
+            // leaving resolvedAt set would make the SLA figures claim otherwise.
+            case REOPENED -> {
+                this.resolvedAt = null;
+                this.resolutionNote = null;
+            }
+            default -> {
+                // IN_PROGRESS, ASSIGNED and OPEN carry no extra timestamp.
+            }
+        }
+        this.status = next;
     }
 
     /** Sends the request back to the unassigned queue. */

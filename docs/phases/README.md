@@ -18,8 +18,8 @@ opened the code.
 | [05](phase-05-login-and-security.md) | Login and security | Done |
 | [06](phase-06-service-requests.md) | Service requests (and locations) | Done |
 | [07](phase-07-assignment.md) | Assignment | Done |
-| 08 | Status workflow | Not started |
-| 09 | SLA and escalation | Not started |
+| [08](phase-08-status-workflow.md) | Status workflow (and timeline) | Done |
+| [09](phase-09-sla-and-escalation.md) | SLA and escalation | Done |
 | 10 | Frontend | Not started |
 
 The full roadmap is in [04-development-phases.md](../04-development-phases.md).

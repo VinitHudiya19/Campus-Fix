@@ -3,6 +3,7 @@ package com.campusfix.request.dto;
 import com.campusfix.request.Priority;
 import com.campusfix.request.RequestStatus;
 import com.campusfix.request.ServiceRequest;
+import com.campusfix.sla.SlaState;
 
 import java.time.Instant;
 
@@ -24,10 +25,12 @@ public record RequestSummaryResponse(
         String statusLabel,
         String studentName,
         String assignedTechnicianName,
+        SlaState slaState,
+        String slaStateLabel,
         Instant dueAt,
         Instant createdAt) {
 
-    public static RequestSummaryResponse from(ServiceRequest request) {
+    public static RequestSummaryResponse from(ServiceRequest request, SlaState slaState) {
         var technician = request.getAssignedTechnician();
         return new RequestSummaryResponse(
                 request.getId(),
@@ -42,6 +45,8 @@ public record RequestSummaryResponse(
                 request.getStatus().getDisplayName(),
                 request.getStudent().getFullName(),
                 technician == null ? null : technician.getFullName(),
+                slaState,
+                slaState.getDisplayName(),
                 request.getDueAt(),
                 request.getCreatedAt());
     }

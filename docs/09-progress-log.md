@@ -15,8 +15,10 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 5 | Login and security | Done | [phase-05](phases/phase-05-login-and-security.md) |
 | 6 | Service requests | Done | [phase-06](phases/phase-06-service-requests.md) |
 | 7 | Assignment | Done | [phase-07](phases/phase-07-assignment.md) |
-| 8 | Status workflow | Next | |
-| 9–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
+| 8 | Status workflow | Done | [phase-08](phases/phase-08-status-workflow.md) |
+| 9 | SLA and escalation | Done | [phase-09](phases/phase-09-sla-and-escalation.md) |
+| 10 | Frontend | Next | |
+| 11–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
 
@@ -109,6 +111,32 @@ Dropped the `active` flag the design doc listed on `assignments` — it is exact
 Technicians now see only work assigned to them, which is the narrowing promised
 in Phase 6.
 
+### Phases 8 and 9 — Status workflow, SLA and escalation
+
+Built together, because the SLA needs the `resolved_at` / `closed_at` timestamps
+the workflow produces. 44 tests passing.
+
+The workflow is one enum, `StatusAction`, holding all five legal moves. `OPEN`
+cannot reach `CLOSED` because no action does that — not because a check forbids
+it.
+
+Only the reporting student may confirm a fix. Not an admin, not the technician:
+nobody else can truthfully say whether the problem in someone's room is solved,
+and letting staff close their own work makes the resolution rate a number they
+award themselves.
+
+`due_at` is stored, `slaState` is computed. A deadline is a promise fixed at a
+moment; a state is a function of the clock. Storing the state would mean a column
+that is wrong most of the time.
+
+Escalation runs on a `@Scheduled` fixed delay. Duplicate escalation is blocked by
+a unique key on (request, level) as well as in code, because the scheduler runs
+on every application instance.
+
+Also added the activity timeline in Phase 8 — append-only, written from one
+service, and joining the caller's transaction so a rolled-back change takes its
+log entry with it.
+
 ## Problems hit and how they were fixed
 
 Recorded because each one costs an hour if you meet it cold.
@@ -146,6 +174,19 @@ group, so the signature bytes were unchanged. Editing the *payload* — the atta
 that actually matters — is correctly rejected. Lesson: test the attack, not a
 mutation of the string.
 
+**A test could not call the entity's status method — which was correct.**
+`SlaSnapshotTest` sits in the `sla` package and tried to call
+`ServiceRequest.applyStatus(...)`, which is package-private so that only the
+workflow service can change a status. The encapsulation was doing its job; the
+test was fixed to set the fields directly rather than the method being widened.
+
+**A generated error message read as broken English.**
+`"Cannot confirm it is fixed a request that is in progress"` — the action label
+is a verb phrase and did not fit the sentence. Reworded to
+`"'Confirm it is fixed' is not possible while the request is in progress"`. Worth
+recording because it was only visible by actually calling the endpoint, not from
+reading the code.
+
 **MySQL `DATETIME` stores no timezone.**
 Added `spring.jpa.properties.hibernate.jdbc.time_zone=UTC` so timestamps do not
 shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
@@ -161,13 +202,18 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 8: Status workflow
+## Next — Phase 10: Frontend
 
-- one table of legal moves, so `OPEN` can never jump straight to `CLOSED`
-- a technician starts work, then marks it resolved
-- a student confirms the resolution (→ `CLOSED`) or reopens it
-- staff can reject an invalid or duplicate request, with a reason
-- `resolved_at` and `closed_at` columns, added by the phase that can set them
-- every change recorded, so the request has a readable timeline
+The API is complete enough to drive a real interface. Plain
+HTML/CSS/JavaScript with Bootstrap, no React.
 
-This is where `RequestStatus` stops being a label and starts being a workflow.
+- login page, and a token kept for the session
+- a student's screens: report a problem, my requests, one request with its timeline
+- a technician's screen: my work, start and resolve
+- a department head's screen: the queue, assign, reject
+- an admin's screens: departments, categories, locations, users, SLA targets
+- real empty, loading and error states — not a spinner that never ends
+
+The menus follow `/api/auth/me`, and the buttons on a request follow
+`/api/requests/{id}/available-actions`, so the screen never offers something the
+server will refuse.
