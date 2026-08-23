@@ -25,6 +25,9 @@ public record RequestDetailResponse(
         Long studentId,
         String studentName,
         String studentEmail,
+        Long assignedTechnicianId,
+        String assignedTechnicianName,
+        Instant assignedAt,
         Instant dueAt,
         Instant createdAt,
         Instant updatedAt) {
@@ -33,6 +36,7 @@ public record RequestDetailResponse(
         var category = request.getCategory();
         var location = request.getLocation();
         var student = request.getStudent();
+        var technician = request.getAssignedTechnician();
 
         return new RequestDetailResponse(
                 request.getId(),
@@ -52,6 +56,9 @@ public record RequestDetailResponse(
                 student.getId(),
                 student.getFullName(),
                 student.getEmail(),
+                technician == null ? null : technician.getId(),
+                technician == null ? null : technician.getFullName(),
+                request.getAssignedAt(),
                 request.getDueAt(),
                 request.getCreatedAt(),
                 request.getUpdatedAt());

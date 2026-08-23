@@ -41,8 +41,9 @@ public class ServiceRequestController {
             @RequestParam(required = false) RequestStatus status,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Priority priority,
+            @RequestParam(defaultValue = "false") boolean unassignedOnly,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        return requestService.search(status, categoryId, priority, pageable);
+        return requestService.search(status, categoryId, priority, unassignedOnly, pageable);
     }
 
     @GetMapping("/{id}")

@@ -86,11 +86,13 @@ public class ServiceRequestService {
     public PagedResponse<RequestSummaryResponse> search(RequestStatus status,
                                                         Long categoryId,
                                                         Priority priority,
+                                                        boolean unassignedOnly,
                                                         Pageable pageable) {
         RequestScope scope = RequestScope.forUser(currentUser.require());
 
         Page<ServiceRequest> page = requestRepository.search(
-                scope.studentId(), scope.departmentId(), status, categoryId, priority, pageable);
+                scope.studentId(), scope.departmentId(), scope.technicianId(),
+                status, categoryId, priority, unassignedOnly, pageable);
 
         return PagedResponse.of(page, RequestSummaryResponse::from);
     }

@@ -14,8 +14,9 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 4 | Users and roles | Done | [phase-04](phases/phase-04-users-and-roles.md) |
 | 5 | Login and security | Done | [phase-05](phases/phase-05-login-and-security.md) |
 | 6 | Service requests | Done | [phase-06](phases/phase-06-service-requests.md) |
-| 7 | Assignment | Next | |
-| 8–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
+| 7 | Assignment | Done | [phase-07](phases/phase-07-assignment.md) |
+| 8 | Status workflow | Next | |
+| 9–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
 
@@ -92,6 +93,22 @@ Visibility was checked against the running app, not only with mocks: a second
 student's list is empty, their read of another student's request is 404, and
 `?studentId=` is ignored because it is not a bound parameter.
 
+### Phase 7 — Assignment
+
+Assignment as a history table, not a column, so "who had this last week?" stays
+answerable. 33 tests passing.
+
+One deliberate denormalisation: `service_requests.assigned_technician_id` copies
+the newest open assignment row. Deriving it would put a subquery into the hottest
+query in the app. Safe because only `AssignmentService` writes either, in one
+transaction.
+
+Dropped the `active` flag the design doc listed on `assignments` — it is exactly
+`unassigned_at is null`, and two copies of one fact can disagree.
+
+Technicians now see only work assigned to them, which is the narrowing promised
+in Phase 6.
+
 ## Problems hit and how they were fixed
 
 Recorded because each one costs an hour if you meet it cold.
@@ -144,12 +161,13 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 7: Assignment
+## Next — Phase 8: Status workflow
 
-- a department head assigns a request to a technician in their own department
-- reassignment keeps the old assignment as history, rather than overwriting it
-- status moves OPEN → ASSIGNED when the first assignment is made
-- a technician's request list narrows to "assigned to me"
-- only one active assignment per request at a time
+- one table of legal moves, so `OPEN` can never jump straight to `CLOSED`
+- a technician starts work, then marks it resolved
+- a student confirms the resolution (→ `CLOSED`) or reopens it
+- staff can reject an invalid or duplicate request, with a reason
+- `resolved_at` and `closed_at` columns, added by the phase that can set them
+- every change recorded, so the request has a readable timeline
 
-The full status workflow is Phase 8. Phase 7 only decides who is responsible.
+This is where `RequestStatus` stops being a label and starts being a workflow.

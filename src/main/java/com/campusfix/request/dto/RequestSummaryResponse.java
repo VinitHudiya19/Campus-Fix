@@ -23,10 +23,12 @@ public record RequestSummaryResponse(
         RequestStatus status,
         String statusLabel,
         String studentName,
+        String assignedTechnicianName,
         Instant dueAt,
         Instant createdAt) {
 
     public static RequestSummaryResponse from(ServiceRequest request) {
+        var technician = request.getAssignedTechnician();
         return new RequestSummaryResponse(
                 request.getId(),
                 request.getRequestNumber(),
@@ -39,6 +41,7 @@ public record RequestSummaryResponse(
                 request.getStatus(),
                 request.getStatus().getDisplayName(),
                 request.getStudent().getFullName(),
+                technician == null ? null : technician.getFullName(),
                 request.getDueAt(),
                 request.getCreatedAt());
     }

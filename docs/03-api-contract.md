@@ -418,8 +418,8 @@ and it is enforced in the query, not by a URL rule:
 | Role | Sees |
 |---|---|
 | `STUDENT` | Only the requests they reported |
-| `TECHNICIAN` | Their department's requests (narrows to "assigned to me" in Phase 7) |
-| `DEPARTMENT_HEAD` | Their department's requests |
+| `TECHNICIAN` | Only the requests assigned to them |
+| `DEPARTMENT_HEAD` | Their whole department, including the unassigned queue |
 | `ADMIN` | Everything |
 
 ### `GET /api/requests`
@@ -429,6 +429,7 @@ and it is enforced in the query, not by a URL rule:
 | `status` | enum | none | `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`, `REOPENED`, `REJECTED` |
 | `categoryId` | long | none | Only that category |
 | `priority` | enum | none | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+| `unassignedOnly` | boolean | `false` | Only requests nobody is working on — the department head's queue |
 | `page` | int | `0` | Page number |
 | `size` | int | `20` | Page size |
 | `sort` | string | `createdAt,desc` | Any field of the request |
@@ -517,11 +518,79 @@ rule the server enforces.
 
 `value` and `label` for each of the seven statuses.
 
-### Planned — Phase 7 onwards
+---
 
-    POST /api/requests/{id}/assign            Phase 7
-    PUT  /api/requests/{id}/status            Phase 8
-    POST /api/requests/{id}/reopen            Phase 8
+## Assignment — Implemented
+
+Assignment lives under a request, because it has no meaning on its own.
+
+Assigning and unassigning require **an admin, or the head of the department that
+owns the request's category**. Anyone else gets 404 — not 403, so an id is never
+confirmed to someone with no business knowing about it.
+
+### `POST /api/requests/{id}/assign`
+
+```json
+{ "technicianId": 2, "note": "On that floor today" }
+```
+
+| Field | Rules |
+|---|---|
+| `technicianId` | required, must be an active `TECHNICIAN` in the request's own department |
+| `note` | optional, max 255 — why this person |
+
+Returns **the whole request**, because assigning also changes its status:
+`OPEN` becomes `ASSIGNED`. A request already `IN_PROGRESS` keeps that status —
+changing hands does not undo work already done.
+
+Reassigning is the same call with a different technician. The previous
+assignment is closed at the exact instant the new one opens.
+
+404 if the request does not exist, or the caller may not assign it.
+422 if the technician is not a technician, is deactivated, works in another
+department, already has this request, or the request is `CLOSED`/`REJECTED`.
+
+### `DELETE /api/requests/{id}/assignment`
+
+Returns the request to the unassigned queue. `ASSIGNED` goes back to `OPEN`; a
+request that was already `IN_PROGRESS` keeps that status, because the work really
+did start.
+
+200 with the updated request. 422 if nobody was assigned.
+
+### `GET /api/requests/{id}/assignments`
+
+The full history, newest first. Readable by anyone who can read the request.
+
+```json
+[
+  { "id": 2, "technicianId": 8, "technicianName": "Sana Iqbal",
+    "assignedByName": "Neha Rao", "note": "Amit is on leave",
+    "assignedAt": "2026-08-23T07:54:58.207Z", "unassignedAt": null, "active": true },
+  { "id": 1, "technicianId": 2, "technicianName": "Amit Sharma",
+    "assignedByName": "Neha Rao", "note": "On that floor today",
+    "assignedAt": "2026-08-23T07:54:21.855Z",
+    "unassignedAt": "2026-08-23T07:54:58.207Z", "active": false }
+]
+```
+
+### `GET /api/requests/{id}/assignable-technicians`
+
+```json
+[{ "id": 2, "fullName": "Amit Sharma", "openRequests": 0 }]
+```
+
+Exists because `/api/users` is admin-only but a department head still has to fill
+the assignment dropdown. Returns only technicians in the owning department, with
+no emails — there is no way to enumerate staff elsewhere.
+
+`openRequests` counts current assignments that are not `CLOSED` or `REJECTED`, so
+a technician who closed two hundred requests this year does not look busy.
+
+### Planned — Phase 8
+
+    PUT  /api/requests/{id}/status             Phase 8
+    POST /api/requests/{id}/reopen             Phase 8
     POST /api/requests/{id}/confirm-resolution Phase 8
 
 ## API documentation

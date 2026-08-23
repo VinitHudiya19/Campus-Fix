@@ -17,7 +17,7 @@ opened the code.
 | [04](phase-04-users-and-roles.md) | Users and roles | Done |
 | [05](phase-05-login-and-security.md) | Login and security | Done |
 | [06](phase-06-service-requests.md) | Service requests (and locations) | Done |
-| 07 | Assignment | Not started |
+| [07](phase-07-assignment.md) | Assignment | Done |
 | 08 | Status workflow | Not started |
 | 09 | SLA and escalation | Not started |
 | 10 | Frontend | Not started |

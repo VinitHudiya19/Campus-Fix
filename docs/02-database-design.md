@@ -107,14 +107,25 @@ whether old requests met their target.
 by the phases that can actually set them — Phase 7 and Phase 8 — rather than
 sitting empty in the meantime.
 
-### assignments
-- id
-- request_id
-- technician_id
-- assigned_by
-- assigned_at
-- unassigned_at nullable
-- active
+### assignments — built in Phase 7
+
+```sql
+assignments(id, request_id FK, technician_id FK, assigned_by FK, note,
+            assigned_at, unassigned_at NULL)
+```
+
+One row per period of responsibility. Reassigning ends the running row and opens
+a new one, so "who had this last week?" stays answerable.
+
+The `active` flag originally planned here was dropped: it is exactly
+`unassigned_at is null`, and storing one fact twice creates a way for the two to
+disagree.
+
+`service_requests` gained `assigned_technician_id` and `assigned_at` in the same
+phase. That column duplicates the newest open row above, deliberately — every
+list screen asks "who has this?", and deriving it would mean a subquery in the
+busiest query in the application. Only `AssignmentService` writes either, inside
+one transaction, so they cannot drift.
 
 ### comments
 - id

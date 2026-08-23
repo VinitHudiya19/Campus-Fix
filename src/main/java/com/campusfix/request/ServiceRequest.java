@@ -30,7 +30,8 @@ import java.time.Instant;
         @Index(name = "idx_request_status", columnList = "status"),
         @Index(name = "idx_request_student", columnList = "student_id"),
         @Index(name = "idx_request_category", columnList = "category_id"),
-        @Index(name = "idx_request_due_at", columnList = "due_at")
+        @Index(name = "idx_request_due_at", columnList = "due_at"),
+        @Index(name = "idx_request_technician", columnList = "assigned_technician_id")
 })
 public class ServiceRequest extends Auditable {
 
@@ -76,6 +77,23 @@ public class ServiceRequest extends Auditable {
      */
     @Column(name = "due_at", nullable = false)
     private Instant dueAt;
+
+    /**
+     * Who is responsible <em>right now</em>. The {@code assignments} table holds
+     * the full history of who held it and when; this column is the answer to
+     * "who has it?", which every list and detail screen asks.
+     *
+     * <p>It is a deliberate duplication of the newest open row in that table.
+     * Deriving it instead would put a subquery into every request query, on the
+     * hottest path in the application. Only {@code AssignmentService} writes
+     * either, and it writes both inside one transaction, so they cannot drift.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_technician_id")
+    private User assignedTechnician;
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
 
     protected ServiceRequest() {
         // required by JPA
@@ -136,6 +154,39 @@ public class ServiceRequest extends Auditable {
 
     public Instant getDueAt() {
         return dueAt;
+    }
+
+    public User getAssignedTechnician() {
+        return assignedTechnician;
+    }
+
+    public Instant getAssignedAt() {
+        return assignedAt;
+    }
+
+    /**
+     * Records the new owner and moves an untouched request to ASSIGNED.
+     *
+     * <p>A request already IN_PROGRESS or REOPENED keeps its status: handing the
+     * work to a different technician does not undo the work already done. The
+     * complete set of legal status moves is Phase 8's job; this method only
+     * covers the one move that assignment itself causes.
+     */
+    void assignTo(User technician, Instant at) {
+        this.assignedTechnician = technician;
+        this.assignedAt = at;
+        if (status == RequestStatus.OPEN) {
+            status = RequestStatus.ASSIGNED;
+        }
+    }
+
+    /** Sends the request back to the unassigned queue. */
+    void clearAssignment() {
+        this.assignedTechnician = null;
+        this.assignedAt = null;
+        if (status == RequestStatus.ASSIGNED) {
+            status = RequestStatus.OPEN;
+        }
     }
 
     /**
