@@ -47,6 +47,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<ApiError> handleInvalidRequest(InvalidRequestException ex, WebRequest request) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), request);
+    }
+
+
     /** Wrong email or password. 401 means "we do not know who you are". */
     @ExceptionHandler(AuthenticationFailedException.class)
     public ResponseEntity<ApiError> handleAuthenticationFailed(AuthenticationFailedException ex, WebRequest request) {
@@ -108,6 +114,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         }
         if (status.value() == HttpStatus.BAD_REQUEST.value()) {
             return "The request could not be read";
+        }
+        // Tomcat rejects an oversized upload before any application code runs,
+        // so AttachmentService never gets to produce its friendlier message.
+        if (status.value() == HttpStatus.PAYLOAD_TOO_LARGE.value()) {
+            return "That file is too large to upload";
         }
         return HttpStatus.valueOf(status.value()).getReasonPhrase();
     }

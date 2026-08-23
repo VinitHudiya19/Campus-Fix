@@ -23,6 +23,21 @@
     <div class="card mb-3">
         <div class="card-body">
             <form id="filters" class="row g-2 align-items-end">
+                <div class="col-12 col-md-4">
+                    <label for="search" class="form-label small mb-1">Search</label>
+                    <input type="search" class="form-control form-control-sm" id="search" name="search"
+                           placeholder="Number, title or description" maxlength="100">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="sort" class="form-label small mb-1">Sort by</label>
+                    <select class="form-select form-select-sm" id="sort" name="sort">
+                        <option value="createdAt,desc">Newest first</option>
+                        <option value="createdAt,asc">Oldest first</option>
+                        <option value="dueAt,asc">Due soonest</option>
+                        <option value="priority,desc">Highest priority</option>
+                        <option value="status,asc">Status</option>
+                    </select>
+                </div>
                 <div class="col-6 col-md-3">
                     <label for="status" class="form-label small mb-1">Status</label>
                     <select class="form-select form-select-sm" id="status" name="status">

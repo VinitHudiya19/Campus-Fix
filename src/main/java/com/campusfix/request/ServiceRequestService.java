@@ -4,6 +4,7 @@ import com.campusfix.activity.ActivityLogService;
 import com.campusfix.category.Category;
 import com.campusfix.category.CategoryRepository;
 import com.campusfix.common.exception.BusinessRuleException;
+import com.campusfix.common.exception.InvalidRequestException;
 import com.campusfix.common.exception.ResourceNotFoundException;
 import com.campusfix.common.security.AuthenticatedUser;
 import com.campusfix.common.security.CurrentUser;
@@ -26,9 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Set;
 
 @Service
 public class ServiceRequestService {
+
+    /** What a client may order the list by. Anything else is a 400. */
+    private static final Set<String> SORTABLE_FIELDS =
+            Set.of("createdAt", "dueAt", "priority", "status", "requestNumber", "title", "updatedAt");
 
     private final ServiceRequestRepository requestRepository;
     private final CategoryRepository categoryRepository;
@@ -99,12 +105,15 @@ public class ServiceRequestService {
                                                         Long categoryId,
                                                         Priority priority,
                                                         boolean unassignedOnly,
+                                                        String searchText,
                                                         Pageable pageable) {
         RequestScope scope = RequestScope.forUser(currentUser.require());
+        requireSortableFields(pageable);
 
         Page<ServiceRequest> page = requestRepository.search(
                 scope.studentId(), scope.departmentId(), scope.technicianId(),
-                status, categoryId, priority, unassignedOnly, pageable);
+                status, categoryId, priority, unassignedOnly,
+                searchPattern(searchText), pageable);
 
         // One snapshot for the whole page, so every row on screen is judged
         // against the same instant and the same settings.
@@ -128,6 +137,46 @@ public class ServiceRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException("Request", id));
 
         return RequestDetailResponse.from(request, slaService.stateOf(request));
+    }
+
+    /**
+     * Turns what the user typed into a LIKE pattern.
+     *
+     * <p>The wildcards are escaped. Without this, searching for "50%" would ask
+     * the database for "50 followed by anything", and a search for "_" would
+     * match every request — the user would see results they cannot explain
+     * rather than the one thing they looked for.
+     *
+     * <p>The escape character itself is doubled first, otherwise escaping would
+     * corrupt any literal "!" the user typed.
+     */
+    private String searchPattern(String searchText) {
+        if (searchText == null || searchText.isBlank()) {
+            return null;
+        }
+        String escaped = searchText.trim().toLowerCase()
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
+    }
+
+    /**
+     * Sorting is limited to a known list.
+     *
+     * <p>Spring will happily sort by any property name it can resolve, so an
+     * unchecked value either throws deep inside the query and surfaces as a 500,
+     * or lets a caller order results by a field the API never promised. An
+     * explicit list gives a clear 400 instead, and documents what is sortable.
+     */
+    private void requireSortableFields(Pageable pageable) {
+        pageable.getSort().forEach(order -> {
+            if (!SORTABLE_FIELDS.contains(order.getProperty())) {
+                throw new InvalidRequestException(
+                        "Cannot sort by '" + order.getProperty() + "'. Allowed: "
+                                + String.join(", ", SORTABLE_FIELDS));
+            }
+        });
     }
 
     /**

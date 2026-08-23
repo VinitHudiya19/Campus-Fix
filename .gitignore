@@ -12,6 +12,10 @@ application-local.properties
 
 *.log
 uploads/
+campusfix-uploads/
+
+# Working notes kept local, not published
+docs/
 
 .DS_Store
 Thumbs.db

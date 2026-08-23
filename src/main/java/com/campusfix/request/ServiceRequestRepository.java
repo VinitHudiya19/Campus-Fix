@@ -24,6 +24,12 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
      * <p>The joins are fetched because every row on screen shows the category,
      * the reporter and the assignee. Without them this would be the N+1 problem
      * again, at twenty rows a page.
+     *
+     * <p>{@code search} arrives already lowercased and wrapped in {@code %} by
+     * the service, with LIKE wildcards escaped using {@code !}. A leading
+     * wildcard means no index can be used and MySQL scans the table — acceptable
+     * for a college's volume, and the honest answer at a larger scale would be a
+     * FULLTEXT index rather than pretending this one is free.
      */
     @Query(value = """
             select r from ServiceRequest r
@@ -39,6 +45,10 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
               and (:categoryId is null or c.id = :categoryId)
               and (:priority is null or r.priority = :priority)
               and (:unassignedOnly = false or r.assignedTechnician is null)
+              and (:search is null
+                   or lower(r.requestNumber) like :search escape '!'
+                   or lower(r.title) like :search escape '!'
+                   or lower(r.description) like :search escape '!')
             """,
             countQuery = """
             select count(r) from ServiceRequest r
@@ -49,6 +59,10 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
               and (:categoryId is null or r.category.id = :categoryId)
               and (:priority is null or r.priority = :priority)
               and (:unassignedOnly = false or r.assignedTechnician is null)
+              and (:search is null
+                   or lower(r.requestNumber) like :search escape '!'
+                   or lower(r.title) like :search escape '!'
+                   or lower(r.description) like :search escape '!')
             """)
     Page<ServiceRequest> search(@Param("studentId") Long studentId,
                                 @Param("departmentId") Long departmentId,
@@ -57,6 +71,7 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
                                 @Param("categoryId") Long categoryId,
                                 @Param("priority") Priority priority,
                                 @Param("unassignedOnly") boolean unassignedOnly,
+                                @Param("search") String search,
                                 Pageable pageable);
 
     @Query("""

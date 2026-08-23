@@ -39,6 +39,21 @@
     document.getElementById('prev').addEventListener('click', () => { page--; load(); });
     document.getElementById('next').addEventListener('click', () => { page++; load(); });
 
+    // Changing the sort re-runs immediately: it is not a filter you build up,
+    // it is a different view of what is already on screen.
+    filters.sort.addEventListener('change', () => { page = 0; load(); });
+
+    /*
+     * Search runs as you type, but only once typing pauses. Firing on every
+     * keystroke would send a request per letter, and the answers could arrive
+     * out of order — the results for "wi" landing after the results for "wifi".
+     */
+    let searchTimer;
+    filters.search.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { page = 0; load(); }, 350);
+    });
+
     /*
      * The dropdowns are filled from the server rather than hardcoded in this
      * file. The status and priority lists live in Java enums; repeating them
@@ -76,9 +91,11 @@
         pager.classList.add('d-none');
 
         const query = {
+            search: filters.search.value.trim(),
             status: filters.status.value,
             categoryId: filters.categoryId.value,
             priority: filters.priority.value,
+            sort: filters.sort.value,
             page,
             size: 20
         };
@@ -154,8 +171,8 @@
     }
 
     function anyFilterSet() {
-        return filters.status.value || filters.categoryId.value || filters.priority.value
-            || document.getElementById('unassignedOnly').checked;
+        return filters.search.value.trim() || filters.status.value || filters.categoryId.value
+            || filters.priority.value || document.getElementById('unassignedOnly').checked;
     }
 
     function titleFor(user) {

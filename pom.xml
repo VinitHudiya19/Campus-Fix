@@ -21,7 +21,24 @@
     <properties>
         <java.version>21</java.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <aws.sdk.version>2.25.60</aws.sdk.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!--
+                The AWS BOM keeps every aws-sdk artifact on one version. Only the
+                s3 module is actually pulled in below.
+            -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws.sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -69,6 +86,16 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            Only used by the S3 storage adapter, which is off unless the "s3"
+            profile is active. It talks to any S3-compatible service, so the same
+            code works against MinIO in Docker and against real AWS.
+        -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
         </dependency>
 
         <dependency>

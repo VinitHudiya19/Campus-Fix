@@ -37,10 +37,11 @@
         try {
             const request = await Api.get('/api/requests/' + id);
             render(request);
-            // These three are extra detail: the page is already usable without
-            // them, so they load after and fail on their own.
+            // These are extra detail: the page is already usable without them,
+            // so they load after and each fails on its own.
             loadActions();
             loadTimeline();
+            loadAttachments();
             if (canAssign()) {
                 loadAssignmentPanel();
             }
@@ -94,6 +95,21 @@
                 <p class="mb-0" style="white-space: pre-wrap">${UI.text(request.rejectionReason)}</p>
               </div>
             </div>` : ''}
+
+            <div class="card mb-3">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <span>Photos</span>
+                ${request.status === 'CLOSED' || request.status === 'REJECTED' ? '' : `
+                <div>
+                  <input type="file" id="photo-input" class="d-none"
+                         accept="image/png,image/jpeg,image/gif,image/webp">
+                  <button class="btn btn-sm btn-outline-secondary" type="button" id="photo-add">
+                    Add a photo
+                  </button>
+                </div>`}
+              </div>
+              <div class="card-body" id="attachments"></div>
+            </div>
 
             <div class="card">
               <div class="card-header">History</div>
@@ -227,6 +243,138 @@
                 </li>`).join('') + '</ul>';
         } catch (error) {
             UI.failed(host, error.message, loadTimeline);
+        }
+    }
+
+    async function loadAttachments() {
+        const host = document.getElementById('attachments');
+        UI.loading(host, 'Loading photos…');
+        try {
+            const files = await Api.get(`/api/requests/${id}/attachments`);
+            if (files.length === 0) {
+                UI.empty(host, 'No photos yet',
+                    'A picture of the problem usually saves a trip.');
+            } else {
+                host.innerHTML = '<ul class="list-unstyled mb-0">' + files.map(file => `
+                    <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                      <div class="me-3">
+                        <a href="${UI.text(file.downloadUrl)}" data-download="${file.id}"
+                           data-filename="${UI.text(file.filename)}">${UI.text(file.filename)}</a>
+                        <div class="small text-secondary">
+                          ${UI.text(file.readableSize)} · ${UI.text(file.uploadedByName)} · ${UI.dateTime(file.createdAt)}
+                        </div>
+                      </div>
+                      ${canRemove(file) ? `<button class="btn btn-sm btn-outline-danger"
+                              type="button" data-remove="${file.id}">Remove</button>` : ''}
+                    </li>`).join('') + '</ul>';
+
+                host.querySelectorAll('[data-download]').forEach(link =>
+                    link.addEventListener('click', downloadFile));
+                host.querySelectorAll('[data-remove]').forEach(button =>
+                    button.addEventListener('click', () => removeFile(button.dataset.remove)));
+            }
+            wireUploadButton();
+        } catch (error) {
+            UI.failed(host, error.message, loadAttachments);
+        }
+    }
+
+    function canRemove(file) {
+        return user.role === 'ADMIN' || file.uploadedByName === user.fullName;
+    }
+
+    function wireUploadButton() {
+        const button = document.getElementById('photo-add');
+        const input = document.getElementById('photo-input');
+        if (!button || button.dataset.wired) {
+            return;
+        }
+        button.dataset.wired = 'true';
+        button.addEventListener('click', () => input.click());
+        input.addEventListener('change', () => uploadFile(input));
+    }
+
+    async function uploadFile(input) {
+        const file = input.files[0];
+        if (!file) {
+            return;
+        }
+
+        // Checked here as a courtesy so the user is not made to wait for an
+        // upload that is going to be refused. The server checks the real bytes
+        // regardless — this is convenience, not validation.
+        const limitBytes = 5 * 1024 * 1024;
+        if (file.size > limitBytes) {
+            UI.toast('That file is larger than 5 MB.', 'danger');
+            input.value = '';
+            return;
+        }
+
+        const button = document.getElementById('photo-add');
+        UI.busy(button, true, 'Uploading…');
+
+        const body = new FormData();
+        body.append('file', file);
+
+        try {
+            // Not Api.post: this is multipart, and the browser has to set the
+            // Content-Type itself so it can add the multipart boundary.
+            const response = await fetch(`/api/requests/${id}/attachments`, {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + Api.token() },
+                body
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error((payload && payload.message) || 'The upload failed.');
+            }
+            UI.toast('Photo added.');
+            loadAttachments();
+        } catch (error) {
+            UI.toast(error.message, 'danger');
+        } finally {
+            UI.busy(button, false);
+            input.value = '';
+        }
+    }
+
+    /*
+     * Downloads go through fetch rather than a plain link, because the endpoint
+     * needs an Authorization header and a browser will not attach one when
+     * following an anchor.
+     */
+    async function downloadFile(event) {
+        event.preventDefault();
+        const link = event.currentTarget;
+        try {
+            const response = await fetch(link.href, {
+                headers: { 'Authorization': 'Bearer ' + Api.token() }
+            });
+            if (!response.ok) {
+                throw new Error('That file could not be downloaded.');
+            }
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const temporary = document.createElement('a');
+            temporary.href = url;
+            temporary.download = link.dataset.filename;
+            temporary.click();
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            UI.toast(error.message, 'danger');
+        }
+    }
+
+    async function removeFile(attachmentId) {
+        if (!window.confirm('Remove this photo? It cannot be undone.')) {
+            return;
+        }
+        try {
+            await Api.del(`/api/requests/${id}/attachments/${attachmentId}`);
+            UI.toast('Photo removed.');
+            loadAttachments();
+        } catch (error) {
+            UI.toast(error.message, 'danger');
         }
     }
 
