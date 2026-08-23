@@ -54,7 +54,13 @@ public class SecurityConfig {
                         // Public: the login endpoint itself, and the pages the
                         // browser needs before anyone has logged in.
                         .requestMatchers("/api/auth/login", "/api/hello").permitAll()
-                        .requestMatchers("/", "/index.html", "/login.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
+                        // The pages themselves are public; the data behind them
+                        // is not. A browser loading an HTML file cannot send an
+                        // Authorization header, and the token deliberately is
+                        // not a cookie — so the files have to be reachable and
+                        // the JavaScript redirects to the login page if there
+                        // is no session. No page contains data of its own.
+                        .requestMatchers("/", "/*.html", "/css/**", "/js/**", "/favicon.ico").permitAll()
 
                         // Reference data: any signed-in user may read it, because
                         // a student needs the category list to report a problem.

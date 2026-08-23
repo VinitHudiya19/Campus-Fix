@@ -20,6 +20,6 @@ opened the code.
 | [07](phase-07-assignment.md) | Assignment | Done |
 | [08](phase-08-status-workflow.md) | Status workflow (and timeline) | Done |
 | [09](phase-09-sla-and-escalation.md) | SLA and escalation | Done |
-| 10 | Frontend | Not started |
+| [10](phase-10-frontend.md) | Frontend | Done |
 
 The full roadmap is in [04-development-phases.md](../04-development-phases.md).

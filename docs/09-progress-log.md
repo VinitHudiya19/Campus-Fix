@@ -17,7 +17,7 @@ The full explanation of each phase lives in [docs/phases](phases/README.md).
 | 7 | Assignment | Done | [phase-07](phases/phase-07-assignment.md) |
 | 8 | Status workflow | Done | [phase-08](phases/phase-08-status-workflow.md) |
 | 9 | SLA and escalation | Done | [phase-09](phases/phase-09-sla-and-escalation.md) |
-| 10 | Frontend | Next | |
+| 10 | Frontend | Done | [phase-10](phases/phase-10-frontend.md) |
 | 11–18 | See roadmap | Not started | [04-development-phases.md](04-development-phases.md) |
 
 ## 2026-08-22
@@ -137,6 +137,27 @@ Also added the activity timeline in Phase 8 — append-only, written from one
 service, and joining the caller's transaction so a rolled-back change takes its
 log entry with it.
 
+### Phase 10 — Frontend
+
+Plain HTML/CSS/JavaScript with Bootstrap from a CDN. No Node, no bundler, no
+build step in front of Maven — `./mvnw spring-boot:run` is still the whole
+toolchain.
+
+The rule throughout: **the server decides, the page asks.** Which buttons appear
+on a request, whether a role needs a department, which priorities a student may
+pick — all fetched rather than reimplemented in JavaScript, so the two can never
+disagree.
+
+The four admin screens share one `crud.js`, so they cannot drift apart.
+
+Every interpolation of user-entered text goes through `UI.text()`. The screens
+build markup with template strings, so a request titled with an `<img onerror>`
+would otherwise run in the department head's browser.
+
+Static HTML had to be made public in `SecurityConfig`: the token is a header, not
+a cookie, so a browser loading a page cannot authenticate. The pages hold no data
+and the JavaScript redirects when there is no session.
+
 ## Problems hit and how they were fixed
 
 Recorded because each one costs an hour if you meet it cold.
@@ -187,6 +208,12 @@ is a verb phrase and did not fit the sentence. Reworded to
 recording because it was only visible by actually calling the endpoint, not from
 reading the code.
 
+**A form appeared not to submit during browser testing.**
+Clicking the submit button through the automation tool produced no request, while
+`form.requestSubmit()` worked and returned 201. The listener was attached and the
+button was not covered — this was the test harness, not the application. Recorded
+so the same dead end is not investigated twice.
+
 **MySQL `DATETIME` stores no timezone.**
 Added `spring.jpa.properties.hibernate.jdbc.time_zone=UTC` so timestamps do not
 shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
@@ -202,18 +229,21 @@ shift with the JVM's timezone. This matters for SLA arithmetic in Phase 9.
 | Tests use H2, production is MySQL | Testcontainers alongside the Docker phase, if dialect differences ever bite |
 | `/api/hello` is scaffolding | Delete once Actuator is added |
 
-## Next — Phase 10: Frontend
+## Where the project stands
 
-The API is complete enough to drive a real interface. Plain
-HTML/CSS/JavaScript with Bootstrap, no React.
+The product works end to end: a student reports a problem, the category routes it
+to a department, a head assigns it, a technician does the work, the student
+confirms or reopens it, and anything late escalates on its own. All of it through
+a real interface.
 
-- login page, and a token kept for the session
-- a student's screens: report a problem, my requests, one request with its timeline
-- a technician's screen: my work, start and resolve
-- a department head's screen: the queue, assign, reject
-- an admin's screens: departments, categories, locations, users, SLA targets
-- real empty, loading and error states — not a spinner that never ends
+What remains is the work around the product rather than the product itself —
+seed data for a demo, API documentation, deployment, reporting. See
+[04-development-phases.md](04-development-phases.md).
 
-The menus follow `/api/auth/me`, and the buttons on a request follow
-`/api/requests/{id}/available-actions`, so the screen never offers something the
-server will refuse.
+## Next — Phase 11: Demo data and API documentation
+
+- a seed profile that fills a realistic college: departments, categories,
+  locations, staff, students, and requests spread across every status and SLA state
+- so the screens can be shown without twenty minutes of clicking first
+- Swagger/OpenAPI, which now has a complete API worth documenting
+- a README that gets someone from `git clone` to a running application

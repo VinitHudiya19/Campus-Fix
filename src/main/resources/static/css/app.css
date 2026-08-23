@@ -1,0 +1,154 @@
+/*
+ * Small additions to Bootstrap. Everything Bootstrap already does well is left
+ * alone — this file only holds what the product genuinely needs.
+ */
+
+:root {
+    --cf-border: #dee2e6;
+    --cf-muted: #6c757d;
+    --cf-page-bg: #f6f7f9;
+}
+
+body {
+    background-color: var(--cf-page-bg);
+    color: #212529;
+}
+
+.navbar-brand {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* Cards carry a border rather than a shadow: on a light page a hairline reads
+   as structure, while a shadow reads as clutter once there are six of them. */
+.card {
+    border: 1px solid var(--cf-border);
+    box-shadow: none;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid var(--cf-border);
+    font-weight: 600;
+}
+
+.table > :not(caption) > * > * {
+    padding: 0.6rem 0.75rem;
+}
+
+.table thead th {
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--cf-muted);
+    font-weight: 600;
+}
+
+/* Status and SLA badges. Muted fills, not saturated ones — a table of twenty
+   requests should be readable, and twenty bright pills is not. */
+.badge-status {
+    font-weight: 500;
+    font-size: 0.75rem;
+    padding: 0.3em 0.6em;
+    border: 1px solid transparent;
+}
+
+.st-OPEN        { background:#eef2f7; color:#3d5a80; border-color:#d7e0ea; }
+.st-ASSIGNED    { background:#eaf2fb; color:#1c5da8; border-color:#cfe0f5; }
+.st-IN_PROGRESS { background:#fff5e0; color:#8a5a00; border-color:#f5e3b8; }
+.st-RESOLVED    { background:#e8f5ec; color:#1d6f3d; border-color:#cfe8d8; }
+.st-CLOSED      { background:#eef0f2; color:#4a5158; border-color:#dfe3e6; }
+.st-REOPENED    { background:#fdeceb; color:#a13b32; border-color:#f7d5d2; }
+.st-REJECTED    { background:#f2f2f2; color:#6c757d; border-color:#e2e2e2; }
+
+.sla-ON_TRACK { background:#e8f5ec; color:#1d6f3d; border-color:#cfe8d8; }
+.sla-DUE_SOON { background:#fff5e0; color:#8a5a00; border-color:#f5e3b8; }
+.sla-BREACHED { background:#fdeceb; color:#a13b32; border-color:#f7d5d2; }
+.sla-MET      { background:#e8f5ec; color:#1d6f3d; border-color:#cfe8d8; }
+.sla-MISSED   { background:#f7ecec; color:#8b4a44; border-color:#ecd6d4; }
+
+.priority-CRITICAL { color: #a13b32; font-weight: 600; }
+.priority-HIGH     { color: #8a5a00; font-weight: 600; }
+
+/* The three states every list has to be able to show. */
+.state-panel {
+    padding: 2.5rem 1rem;
+    text-align: center;
+    color: var(--cf-muted);
+}
+
+.state-panel .state-title {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.25rem;
+}
+
+.timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.timeline li {
+    position: relative;
+    padding: 0 0 1.1rem 1.5rem;
+    border-left: 2px solid var(--cf-border);
+}
+
+.timeline li:last-child {
+    border-left-color: transparent;
+    padding-bottom: 0;
+}
+
+.timeline li::before {
+    content: "";
+    position: absolute;
+    left: -5px;
+    top: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #adb5bd;
+}
+
+.timeline li.system::before {
+    background: #c9302c;
+}
+
+.timeline .tl-meta {
+    font-size: 0.8125rem;
+    color: var(--cf-muted);
+}
+
+.definition-row {
+    display: flex;
+    gap: 1rem;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid #f0f1f3;
+}
+
+.definition-row:last-child {
+    border-bottom: none;
+}
+
+.definition-row dt {
+    flex: 0 0 9.5rem;
+    color: var(--cf-muted);
+    font-weight: 500;
+    margin: 0;
+}
+
+.definition-row dd {
+    margin: 0;
+    flex: 1;
+}
+
+.login-shell {
+    max-width: 25rem;
+    margin: 6vh auto;
+}
+
+.text-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.875rem;
+}
