@@ -13,8 +13,6 @@ whole toolchain.
 
 ## Screenshots
 
-> Add these to `screenshots/` and they will show up here.
-
 | | |
 |---|---|
 | ![Department head's queue](screenshots/requests-list.png) | ![A single request](screenshots/request-detail.png) |
