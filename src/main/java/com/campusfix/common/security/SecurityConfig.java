@@ -86,6 +86,11 @@ public class SecurityConfig {
                         // the signed-in user's own details, served from /api/auth.
                         .requestMatchers("/api/users/**").hasRole("ADMIN")
 
+                        // Reports are for the people who act on them. A head is
+                        // narrowed to their own department inside the service —
+                        // a URL rule cannot express "your department only".
+                        .requestMatchers("/api/reports/**").hasAnyRole("ADMIN", "DEPARTMENT_HEAD")
+
                         .anyRequest().authenticated())
 
                 .exceptionHandling(handling -> handling

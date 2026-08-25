@@ -36,6 +36,10 @@ can reject duplicates with a reason.
 
 **Admins** manage departments, categories, locations, users and the SLA targets.
 
+Heads and admins also get a **reports screen**: SLA compliance per department
+(worst first), how many requests are late right now, average time to fix, and how
+often work comes back after being called fixed.
+
 Behind all of it, a scheduled job watches deadlines. A request past its target
 goes to the department head; still unresolved a day later, it goes to
 administration. Both are recorded on the request's timeline.
@@ -104,7 +108,7 @@ them.
 ./mvnw test
 ```
 
-48 tests, all on the service layer with mocked repositories, so they run in a few
+52 tests, all on the service layer with mocked repositories, so they run in a few
 seconds and no MySQL is needed — the test profile uses in-memory H2.
 
 ---
@@ -172,6 +176,15 @@ filename and a `Content-Type` header, and both are typed by whoever is uploading
 read and compared against the real signature of each accepted format. The stored
 path is `requests/{id}/{uuid}.{ext}`; nothing the uploader typed ever becomes
 part of a path.
+
+**"Met the target" and "late right now" are separate numbers.** Collapsing them
+into one is the obvious mistake and produces something meaningless — a department
+could show 95% compliance while sitting on ten requests that breached last month
+and were never touched, because an unresolved request has no resolution to judge.
+The first is a verdict on finished work; the second is a to-do list. Reopens are
+counted from the activity log rather than from the current status, because a
+request that was reopened and then properly fixed reads as `CLOSED` today — so
+counting statuses would report zero reopens on exactly the requests that had them.
 
 **Roles are an enum column, not a lookup table.** I had a `roles` table in my
 original design and dropped it. A lookup table earns its place when rows can be
@@ -245,6 +258,7 @@ src/main/java/com/campusfix/
 ├── request/       service requests, assignment, status workflow
 ├── attachment/    photo upload and download
 ├── sla/           SLA targets, breach detection, escalation
+├── report/        the aggregation queries behind the reports screen
 ├── activity/      the timeline written on every change
 ├── user/          accounts and roles
 ├── department/    the teams

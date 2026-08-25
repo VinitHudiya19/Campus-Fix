@@ -23,11 +23,13 @@ const App = (() => {
         ],
         DEPARTMENT_HEAD: [
             { href: 'index.html', label: 'Dashboard' },
-            { href: 'requests.html', label: 'Requests' }
+            { href: 'requests.html', label: 'Requests' },
+            { href: 'reports.html', label: 'Reports' }
         ],
         ADMIN: [
             { href: 'index.html', label: 'Dashboard' },
             { href: 'requests.html', label: 'Requests' },
+            { href: 'reports.html', label: 'Reports' },
             { href: 'departments.html', label: 'Departments' },
             { href: 'categories.html', label: 'Categories' },
             { href: 'locations.html', label: 'Locations' },
