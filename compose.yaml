@@ -1,0 +1,70 @@
+# The whole application, from nothing:
+#
+#   docker compose up --build
+#
+# Then http://localhost:8080 with the demo accounts from the README.
+
+services:
+
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-campusfix}
+      MYSQL_DATABASE: campusfix
+      # utf8mb4 so a request title can contain any character a student types.
+      MYSQL_ROOT_HOST: '%'
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      # MySQL accepts connections for several seconds before it is actually
+      # ready. Without this the application starts first, fails to connect and
+      # exits, and "docker compose up" looks broken on a clean machine.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${DB_PASSWORD:-campusfix}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      # The build stage downloads dependencies from Maven Central. On some
+      # setups BuildKit's sandbox has no DNS, and the build fails with
+      # "Temporary failure in name resolution" — this borrows the host's
+      # network for the build only. Harmless where the sandbox already works.
+      network: host
+    depends_on:
+      db:
+        # Waits for the healthcheck above, not merely for the container to exist.
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: ${PROFILES:-prod,demo}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: campusfix
+      DB_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-campusfix}
+      # Overridden in any real deployment. Named so that leaving it is obviously
+      # a mistake rather than a plausible default.
+      JWT_SECRET: ${JWT_SECRET:-campusfix-compose-development-signing-key-change-me}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@campusfix.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin12345}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    volumes:
+      # Uploaded photos outlive the container. Without this, rebuilding the
+      # image loses every attachment while the rows describing them remain.
+      - uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  db-data:
+  uploads:

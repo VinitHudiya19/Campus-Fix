@@ -1,0 +1,20 @@
+# Everything here would be copied into the build context and then thrown away.
+# target/ alone is hundreds of megabytes and would also shadow the jar built
+# inside the image with one built on the host.
+target/
+campusfix-uploads/
+uploads/
+
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+
+docs/
+screenshots/
+*.md
+
+.env
+application-local.properties
+*.log

@@ -53,7 +53,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Public: the login endpoint itself, and the pages the
                         // browser needs before anyone has logged in.
-                        .requestMatchers("/api/auth/login", "/api/hello").permitAll()
+                        // The health check has to answer before anyone can log
+                        // in — Docker and the hosting platform poll it to decide
+                        // whether the container is alive. It reveals only "UP".
+                        .requestMatchers("/api/auth/login", "/actuator/health").permitAll()
                         // The pages themselves are public; the data behind them
                         // is not. A browser loading an HTML file cannot send an
                         // Authorization header, and the token deliberately is

@@ -48,13 +48,22 @@ administration. Both are recorded on the request's timeline.
 
 ## Running it
 
-### You need
+### With Docker — one command, nothing to install
 
-- JDK 21 or later
-- MySQL 8
-- No Maven install — use the wrapper (`./mvnw`)
+```bash
+docker compose up --build
+```
 
-### Setup
+That builds the application, starts MySQL, waits for the database to actually be
+ready, and fills it with demo data. Open <http://localhost:8080>.
+
+Nothing else is needed — no JDK, no MySQL, no configuration. The uploads and the
+database live in named volumes, so stopping and restarting keeps everything.
+
+### Without Docker
+
+You need **JDK 21 or later** and **MySQL 8**. Maven is not required; use the
+wrapper.
 
 Create the database:
 
@@ -62,8 +71,8 @@ Create the database:
 CREATE DATABASE campusfix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Point the app at your MySQL. It reads these from the environment and falls back
-to a local-development default:
+Point the app at your MySQL — these come from the environment, with defaults
+that suit a standard local install:
 
 ```bash
 export DB_USERNAME=root
@@ -110,6 +119,38 @@ them.
 
 52 tests, all on the service layer with mocked repositories, so they run in a few
 seconds and no MySQL is needed — the test profile uses in-memory H2.
+
+There is also an end-to-end check that drives the real HTTP API as each role,
+against a running instance:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+147 checks covering login, every role boundary, the full request lifecycle,
+uploads, SLA escalation and reports. It catches what unit tests cannot — that
+the security rules, serialisation and pieces actually fit together. It writes
+real data (all suffixed with a run id so repeat runs never collide), so point it
+at a scratch database rather than one you are about to demonstrate.
+
+### Running it in production mode
+
+```bash
+SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
+```
+
+The `prod` profile turns off SQL logging and DEBUG output, stops stack traces
+reaching the browser, enables gzip, and honours `X-Forwarded-*` so the app sees
+the real client address behind a proxy. `docker compose` uses it by default.
+
+Health, for a load balancer or hosting platform:
+
+```bash
+curl http://localhost:8080/actuator/health
+```
+
+Only `health` is exposed, and it reports `UP` with no detail — the other
+actuator endpoints describe the application's internals to anyone who asks.
 
 ---
 
@@ -242,11 +283,18 @@ than an oversight:
   isn't.
 - **The S3 adapter is written but untested** — I had no MinIO instance to run it
   against. Local disk is verified end to end.
-- **Not deployed yet, and no Docker setup.** Next on the list.
+- **Not deployed anywhere public yet.** It runs in Docker and has been verified
+  there under the production profile; putting it on a host is the next step.
+- **Hibernate still manages the schema** (`ddl-auto=update`), including in the
+  prod profile. That is fine for a project that can recreate its data and wrong
+  for one that cannot — Flyway migrations with `ddl-auto=validate` is the change
+  to make before this held anything real.
 - **No comments on requests.** Only the fixed set of workflow notes exists, so a
   student cannot ask "any update?".
-- **Tests cover the service layer only.** No controller or integration tests yet;
-  the endpoint rules were checked by hand against the running application.
+- **No JUnit controller or integration tests.** The endpoint and security rules
+  are covered instead by `scripts/smoke-test.sh`, which exercises the real HTTP
+  API — thorough, but it needs a running instance rather than being part of
+  `mvn test`.
 
 ---
 

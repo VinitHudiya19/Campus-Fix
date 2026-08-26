@@ -57,6 +57,17 @@
         </dependency>
 
         <!--
+            Provides /actuator/health, which Docker and any hosting platform use
+            to decide whether the container is actually ready to serve. It
+            replaced the hand-written /api/hello, which was scaffolding from
+            Phase 1 and has been deleted.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--
             Phase 5 upgraded this from the standalone spring-security-crypto to
             the full starter, now that there is a login endpoint to let people in.
         -->
