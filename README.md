@@ -1,13 +1,30 @@
 # CampusFix
 
-A service-desk application for a college campus. A student reports a broken fan
-or dead Wi-Fi, the system works out which department is responsible, a
-department head assigns it to a technician, and the student is the one who
-decides whether it is actually fixed.
+A college service request management platform. Students report campus problems —
+broken fans, dead Wi-Fi, leaking taps — and follow them until they are fixed.
+Technicians work on what they are assigned, department heads run their queue, and
+admins manage the setup.
 
-Built with Spring Boot and MySQL, with a plain HTML/JavaScript frontend served
-by the same application. No Node, no bundler — `./mvnw spring-boot:run` is the
-whole toolchain.
+**Live demo:** https://campus-fix-2g18.onrender.com
+
+The demo runs on Render's free plan, so the first request after a period of
+inactivity takes about a minute while the instance wakes up.
+
+---
+
+## The problem
+
+Right now these issues get reported over WhatsApp groups, phone calls, or by
+walking into an office. That works until somebody asks a simple question:
+
+- Who is actually fixing this?
+- Was it reported already?
+- How long has it been pending?
+- Did anyone check it was really fixed?
+
+Nothing is written down in a form you can search or count. CampusFix gives the
+same process a structure: every report becomes a numbered request with an owner,
+a deadline, a history, and a student who has to agree it is done before it closes.
 
 ---
 
@@ -15,55 +32,349 @@ whole toolchain.
 
 | | |
 |---|---|
-| ![Department head's queue](screenshots/requests-list.png) | ![A single request](screenshots/request-detail.png) |
-| The department head's queue, with SLA state on every row | One request: description, photos, timeline and the actions available to *you* |
+| ![Department head's request queue](screenshots/requests-list.png) | ![A single request with its history](screenshots/request-detail.png) |
+| The department head's queue, with SLA state on every row | One request: description, photos, timeline, and the actions available to you |
 
 ---
 
-## What it does
+## How a request moves
 
-**Students** report a problem by picking a category — never a department. Wi-Fi
-goes to IT Support, a flickering tube light goes to Electrical. They can attach
-photos, follow the request through its timeline, and confirm or reopen it when a
-technician says it is fixed.
+```text
+Student creates a request
+        ↓
+      OPEN                    category decides the department
+        ↓                     head assigns a technician
+     ASSIGNED
+        ↓                     technician starts work
+   IN_PROGRESS
+        ↓                     technician records what they did
+     RESOLVED
+        ↓                     student confirms
+      CLOSED
+```
 
-**Technicians** see only the work assigned to them. They start it, then record
-what they actually did when they mark it resolved.
+Two other paths exist:
 
-**Department heads** see their whole department including the unassigned queue,
-assign work to technicians (with each technician's current workload shown), and
-can reject duplicates with a reason.
+- **RESOLVED → REOPENED → IN_PROGRESS** — the student says it is still broken
+- **OPEN / ASSIGNED / IN_PROGRESS / REOPENED → REJECTED** — staff reject a
+  duplicate or out-of-scope request, with a reason
 
-**Admins** manage departments, categories, locations, users and the SLA targets.
-
-Heads and admins also get a **reports screen**: SLA compliance per department
-(worst first), how many requests are late right now, average time to fix, and how
-often work comes back after being called fixed.
-
-Behind all of it, a scheduled job watches deadlines. A request past its target
-goes to the department head; still unresolved a day later, it goes to
-administration. Both are recorded on the request's timeline.
+The seven statuses are `OPEN`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`,
+`REOPENED`, `REJECTED`. Only five actions can move a request between them, and
+each one records who did it and why.
 
 ---
 
-## Running it
+## Roles
 
-### With Docker — one command, nothing to install
+Four roles, defined in `Role.java` and enforced in `SecurityConfig`.
+
+| Role | What they can do |
+|---|---|
+| **STUDENT** | Report problems, attach photos, follow their own requests, confirm or reopen a resolution |
+| **TECHNICIAN** | See the work assigned to them, start it, record what they did, mark it resolved |
+| **DEPARTMENT_HEAD** | See their department's whole queue, assign and reassign technicians, reject requests, view reports for their department |
+| **ADMIN** | Manage departments, categories, locations, users and SLA targets; see everything |
+
+A student never picks a department. They pick a category — "Wi-Fi", "Fan" — and
+the category decides which department gets the work.
+
+---
+
+## Features
+
+**Students**
+- Create a request with a category, optional location and priority
+- Attach photos (PNG, JPEG, GIF, WebP)
+- Track status, deadline and full history
+- Confirm a resolution, or reopen it with a reason
+
+**Technicians**
+- See only requests assigned to them
+- Start work and mark resolved, with a note describing the fix
+
+**Department heads**
+- See the department queue, including unassigned requests
+- Assign or reassign, with each technician's current workload shown
+- Reject requests with a reason
+- Reports for their own department
+
+**Admins**
+- Manage departments, categories, locations and users
+- Configure SLA targets per priority
+- Reports across all departments
+- Trigger the overdue check manually
+
+**Across the system**
+- Search over request number, title and description
+- Filter by status, category, priority and unassigned
+- Sorting and pagination
+- An activity timeline on every request
+- SLA tracking with automatic two-level escalation
+
+---
+
+## Tech stack
+
+**Backend**
+- Java 21
+- Spring Boot 3.5.6
+- Spring Web — REST controllers
+- Spring Data JPA + Hibernate — persistence
+- Spring Security — authentication and role-based authorization
+- JJWT 0.12.6 — JWT creation and verification
+- Spring Boot Actuator — `/actuator/health` for the hosting platform's health check
+- Bean Validation — request validation
+
+**Database**
+- MySQL 8
+
+**Frontend**
+- HTML, CSS, JavaScript (no framework)
+- Bootstrap 5 — layout and components, from a CDN
+- Chart.js — the three charts on the reports screen, from a CDN
+
+**Storage**
+- Local disk by default
+- AWS SDK for Java (S3) — used under the `s3` profile for S3-compatible storage
+
+**Testing**
+- JUnit 5, Mockito, AssertJ
+- H2 — in-memory database so tests need no MySQL
+
+**Deployment**
+- Docker (multi-stage build)
+- Docker Compose for local development
+
+There is **no** Redis, message queue, or email integration in this project. The
+frontend has no build step — the files are served by Spring directly.
+
+---
+
+## Architecture
+
+A single Spring Boot application (a monolith), organised by feature rather than
+by layer.
+
+```text
+Browser (HTML/JS)
+      ↓  fetch + JWT in the Authorization header
+REST Controller      reads the request, returns a DTO, no business rules
+      ↓
+Service              enforces the rules, owns the transaction
+      ↓
+Repository           Spring Data JPA
+      ↓
+Hibernate
+      ↓
+MySQL
+```
+
+Everything about requests lives in `com.campusfix.request`, everything about
+users in `com.campusfix.user`, and so on. A change to one feature touches one
+folder instead of four.
+
+---
+
+## Project structure
+
+```text
+CAMPUS-FIX/
+├── src/
+│   ├── main/
+│   │   ├── java/com/campusfix/
+│   │   │   ├── auth/          login, JWT issuing, current user
+│   │   │   ├── user/          accounts and roles
+│   │   │   ├── department/    the teams that fix things
+│   │   │   ├── category/      problem types, each pointing at a department
+│   │   │   ├── location/      where on campus
+│   │   │   ├── request/       requests, assignment, status workflow
+│   │   │   ├── attachment/    photo upload and download
+│   │   │   ├── activity/      the timeline written on every change
+│   │   │   ├── sla/           SLA targets, breach detection, escalation
+│   │   │   ├── report/        aggregation queries for the reports screen
+│   │   │   ├── demo/          demo data seeder
+│   │   │   └── common/        security, storage, error handling, config
+│   │   └── resources/
+│   │       ├── static/        the frontend (HTML, CSS, JS)
+│   │       └── application*.properties
+│   └── test/java/com/campusfix/
+├── scripts/smoke-test.sh      end-to-end API check
+├── screenshots/
+├── Dockerfile
+├── compose.yaml
+└── pom.xml
+```
+
+---
+
+## Database
+
+Ten entities. Hibernate generates the schema from them (`ddl-auto=update`);
+there are no migration files.
+
+| Entity | Purpose |
+|---|---|
+| `User` | Students and staff, with a role and an optional department |
+| `Department` | A team — IT Support, Electrical |
+| `Category` | A problem type, belonging to one department |
+| `Location` | Campus, building, floor, room |
+| `ServiceRequest` | The request itself |
+| `Assignment` | One period during which a technician held a request |
+| `ActivityLog` | Append-only history of everything that happened |
+| `Attachment` | A record of an uploaded photo (the file lives in storage) |
+| `SlaConfig` | Target hours and warning threshold per priority |
+| `Escalation` | A record that a late request was pushed up a level |
+
+The relationships that matter:
+
+- A **category** belongs to one **department** — this is what routes a request
+- A **request** has one student, one category, an optional location, and a
+  currently assigned technician
+- **Assignments** accumulate rather than overwrite, so reassignment keeps history
+- **Activity logs** and **escalations** both belong to a request
+
+---
+
+## API
+
+All endpoints are under `/api`. Everything except login and the health check
+needs an `Authorization: Bearer <token>` header.
+
+```text
+Authentication
+POST   /api/auth/login
+GET    /api/auth/me
+PUT    /api/auth/password
+
+Service requests
+GET    /api/requests              search, filters, sorting, pagination
+POST   /api/requests              students only
+GET    /api/requests/{id}
+GET    /api/requests/priorities
+GET    /api/requests/statuses
+
+Workflow
+POST   /api/requests/{id}/start
+POST   /api/requests/{id}/resolve
+POST   /api/requests/{id}/reject
+POST   /api/requests/{id}/confirm
+POST   /api/requests/{id}/reopen
+GET    /api/requests/{id}/available-actions
+GET    /api/requests/{id}/timeline
+GET    /api/requests/{id}/escalations
+
+Assignment
+POST   /api/requests/{id}/assign
+DELETE /api/requests/{id}/assignment
+GET    /api/requests/{id}/assignments
+GET    /api/requests/{id}/assignable-technicians
+
+Attachments
+GET    /api/requests/{id}/attachments
+POST   /api/requests/{id}/attachments
+GET    /api/requests/{id}/attachments/{attachmentId}
+DELETE /api/requests/{id}/attachments/{attachmentId}
+
+Admin
+GET/POST/PUT/DELETE  /api/departments, /api/categories, /api/locations, /api/users
+GET    /api/sla       PUT /api/sla/{priority}      POST /api/sla/check-now
+GET    /api/reports   admin and department head only
+```
+
+There is no signup endpoint. A college issues accounts, so users are created by
+an admin through `POST /api/users`.
+
+There is no Swagger UI in this project.
+
+---
+
+## Security
+
+- **Passwords** are hashed with BCrypt. Nothing stores or returns a plain password.
+- **JWT authentication**, stateless — no server-side session. A filter reads the
+  token on each request and builds the caller's identity from its claims.
+- **Role-based authorization** in one place (`SecurityConfig`), so it is possible
+  to read the whole policy at once.
+- **Row-level visibility**: a student sees only their own requests, a technician
+  only what is assigned to them, a head only their department. This is pushed
+  into the JPA query rather than filtered afterwards.
+- **404 instead of 403** when reading a request outside your scope, so the API
+  does not confirm that an id exists to someone who should not know.
+- **Upload validation** by the file's magic bytes, not by its name or the
+  `Content-Type` header, both of which the uploader controls. Downloads are sent
+  with `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff`.
+- **Error responses** use one shape everywhere, and never include a stack trace.
+
+There is no rate limiting.
+
+---
+
+## SLA and escalation
+
+Each priority has a target time, configurable by an admin:
+
+| Priority | Default target |
+|---|---|
+| LOW | 72 hours |
+| MEDIUM | 48 hours |
+| HIGH | 24 hours |
+| CRITICAL | 4 hours |
+
+When a request is created, its deadline is calculated and **stored**. Changing a
+target later only affects new requests — a promise already made to a student does
+not move.
+
+The SLA state (`on track`, `due soon`, `breached`, `met`, `missed`) is computed
+on read, since it changes with the clock alone.
+
+A scheduled job runs every 15 minutes and looks for requests past their deadline
+that are still unresolved. The first breach escalates to the **department head**;
+if it is still unresolved 24 hours later, it escalates to the **administration**.
+Both are written to the request's timeline. A resolved request is never
+escalated — it is waiting on the student, not the department.
+
+---
+
+## Frontend
+
+Plain HTML, CSS and JavaScript with Bootstrap. No build step: the files sit in
+`src/main/resources/static` and Spring serves them.
+
+Pages:
+
+| Page | Who |
+|---|---|
+| `login.html` | Everyone |
+| `index.html` | Dashboard — the tiles differ by role |
+| `requests.html` | Request list, with search and filters |
+| `request-new.html` | Report a problem (students) |
+| `request-detail.html` | One request: description, photos, timeline, actions |
+| `reports.html` | Admin and department head |
+| `departments.html`, `categories.html`, `locations.html`, `users.html`, `sla.html` | Admin |
+| `password.html` | Change your own password |
+
+The screens ask the server what is possible rather than deciding themselves —
+which buttons appear on a request comes from
+`GET /api/requests/{id}/available-actions`, so the UI and the server cannot
+disagree.
+
+---
+
+## Running it locally
+
+### With Docker
 
 ```bash
 docker compose up --build
 ```
 
-That builds the application, starts MySQL, waits for the database to actually be
-ready, and fills it with demo data. Open <http://localhost:8080>.
-
-Nothing else is needed — no JDK, no MySQL, no configuration. The uploads and the
-database live in named volumes, so stopping and restarting keeps everything.
+Starts MySQL and the application, waits for the database to be ready, and loads
+demo data. Open <http://localhost:8080>. Nothing else needs installing.
 
 ### Without Docker
 
-You need **JDK 21 or later** and **MySQL 8**. Maven is not required; use the
-wrapper.
+You need **JDK 21+** and **MySQL 8**. Maven is not required — use the wrapper.
 
 Create the database:
 
@@ -71,45 +382,52 @@ Create the database:
 CREATE DATABASE campusfix CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Point the app at your MySQL — these come from the environment, with defaults
-that suit a standard local install:
+Set your credentials — these are read from the environment, with defaults that
+suit a standard local install:
 
 ```bash
-export DB_USERNAME=root
+export DB_USERNAME=your_username
 export DB_PASSWORD=your_password
 ```
 
-Then run it with demo data:
+Run it:
 
 ```bash
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
 ```
 
-Open <http://localhost:8080>.
-
 The `demo` profile fills an empty database with four departments, twelve
 categories, eleven locations, sixteen people and seventeen requests spread across
-every status and every SLA state — including some already breached, so the
-escalation behaviour is visible immediately. It only runs when there are no
-requests yet, so it will never overwrite real data.
-
-Drop the profile flag to start with an empty system. You still get an
-administrator account, printed in the startup log.
+every status and SLA state. It only runs when there are no requests yet, so it
+will not overwrite real data. Drop the profile to start empty — you still get an
+admin account, printed in the startup log.
 
 ### Demo accounts
 
 Every seeded account uses the password `demo1234`.
 
-| Email | Role | What you see |
-|---|---|---|
-| `priya.nair@college.edu` | Student | Only her own three requests |
-| `amit.sharma@college.edu` | Technician, IT Support | Only work assigned to him |
-| `neha.rao@college.edu` | Department head, IT Support | All seven IT requests, plus the unassigned queue |
-| `admin@campusfix.local` | Administrator | Everything — password is `admin12345` |
+| Email | Role |
+|---|---|
+| `priya.nair@college.edu` | Student |
+| `amit.sharma@college.edu` | Technician, IT Support |
+| `neha.rao@college.edu` | Department head, IT Support |
+| `admin@campusfix.local` | Administrator (password `admin12345` locally) |
 
-Signing in as each of these in turn is the fastest way to see what the
-application actually does, because the same request looks different to each of
-them.
+### Configuration
+
+Everything is set through environment variables, with local defaults in
+`application.properties`:
+
+```text
+DB_HOST, DB_PORT, DB_NAME, DB_USERNAME, DB_PASSWORD, DB_SSL_MODE
+JWT_SECRET, JWT_EXPIRY_MINUTES
+ADMIN_EMAIL, ADMIN_PASSWORD
+STORAGE_LOCATION                      local disk path
+S3_BUCKET, S3_ENDPOINT, S3_REGION     used only under the s3 profile
+PORT                                  set by the hosting platform
+```
+
+Profiles: `demo` (seed data), `prod` (server settings), `s3` (object storage).
 
 ### Tests
 
@@ -117,268 +435,95 @@ them.
 ./mvnw test
 ```
 
-52 tests, all on the service layer with mocked repositories, so they run in a few
-seconds and no MySQL is needed — the test profile uses in-memory H2.
+52 tests on the service layer with mocked repositories. They run in a few seconds
+and need no MySQL — the test profile uses in-memory H2.
 
-There is also an end-to-end check that drives the real HTTP API as each role,
+There is also an end-to-end script that drives the real HTTP API as each role
 against a running instance:
 
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-147 checks covering login, every role boundary, the full request lifecycle,
-uploads, SLA escalation and reports. It catches what unit tests cannot — that
-the security rules, serialisation and pieces actually fit together. It writes
-real data (all suffixed with a run id so repeat runs never collide), so point it
-at a scratch database rather than one you are about to demonstrate.
-
-### Running it in production mode
-
-```bash
-SPRING_PROFILES_ACTIVE=prod ./mvnw spring-boot:run
-```
-
-The `prod` profile turns off SQL logging and DEBUG output, stops stack traces
-reaching the browser, enables gzip, and honours `X-Forwarded-*` so the app sees
-the real client address behind a proxy. `docker compose` uses it by default.
-
-Health, for a load balancer or hosting platform:
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-Only `health` is exposed, and it reports `UP` with no detail — the other
-actuator endpoints describe the application's internals to anyone who asks.
+150 checks covering login, every role boundary, the full request lifecycle,
+uploads, SLA escalation and reports. It writes real data, so point it at a
+scratch database rather than one you are about to demonstrate.
 
 ---
 
-## How it's built
+## Typical demo flow
 
-```
-Controller   reads the HTTP request, hands over a DTO, returns a DTO
-    ↓        knows no business rules
-Service      enforces the rules, owns the transaction
-    ↓        this is where the thinking lives
-Repository   talks to the database
-    ↓
-Entity       a row, as a Java object
-```
+1. Sign in as `priya.nair@college.edu` (student) and report a problem
+2. Notice the form shows which team it will go to once you pick a category
+3. Sign in as `neha.rao@college.edu` (department head) — the request is in her
+   queue, unassigned
+4. Assign it to a technician; the dropdown shows each one's current workload
+5. Sign in as `amit.sharma@college.edu` (technician) — only his own work is visible
+6. Start it, then mark it resolved with a note
+7. Back as the student: confirm the fix, or reopen it if it is not right
+8. As the head, open **Reports** to see SLA compliance per department
 
-Packages are grouped by feature — everything about requests is in
-`com.campusfix.request` — rather than by layer. A change to one feature touches
-one folder.
-
-**Stack:** Java 21, Spring Boot 3.5, Spring Security with JWT, Spring Data JPA,
-MySQL 8, Bootstrap 5. AWS SDK for the optional S3 storage adapter.
+Signing in as each role in turn is the quickest way to see the point of the
+project, because the same request looks different to each of them.
 
 ---
 
-## Some decisions worth explaining
+## What I built
 
-These are the parts I'd want to talk about, and the reasoning behind them.
+The parts I would want to talk through in an interview:
 
-**The status workflow is a table, not a pile of if-statements.** Every legal move
-is one row of an enum: which statuses it can be used from, what it changes the
-request to, who is entitled to do it, and whether they have to explain
-themselves. A request cannot go from `OPEN` to `CLOSED` — not because a check
-forbids it, but because no action does that. The entity's status methods are
-package-private, so nothing outside the workflow can write the field at all.
-
-**Only the student who reported a problem can confirm it is fixed.** Not the
-technician, not an admin. Nobody else can truthfully say whether the fan in
-someone's room is working, and if staff could close their own work, the
-resolution rate would be a number they award themselves.
-
-**Reading someone else's request returns 404, not 403.** A 403 confirms the id
-exists, which lets anyone walk `/api/requests/1`, `/2`, `/3` and learn how many
-requests the college has and when activity peaks. From outside your scope, it
-simply is not there.
-
-**Visibility is pushed into the SQL, not applied afterwards in Java.** A role
-becomes two or three filter values that go into the WHERE clause, so the database
-never returns rows the caller may not see. Fetching everything and filtering in
-Java means one forgotten condition leaks the whole table — and it does not
-paginate correctly either. Search was added the same way, as one more condition
-in the same query, so searching cannot be used to see another student's requests.
-
-**The SLA deadline is stored; the SLA state is not.** `due_at` is written once at
-creation, because it is a promise made at a moment in time — if the college
-shortens the target for medium-priority work tomorrow, a request filed today
-should keep the window it was actually given, and last month's met targets should
-not silently become breaches. The state (`on track` / `due soon` / `breached`) is
-the opposite: it changes with the clock alone, so storing it would mean a column
-that is wrong most of the time.
-
-**Uploads are checked against the file's magic bytes.** A browser sends a
-filename and a `Content-Type` header, and both are typed by whoever is uploading
-— anyone can rename `shell.php` to `photo.jpg`. So the first twelve bytes are
-read and compared against the real signature of each accepted format. The stored
-path is `requests/{id}/{uuid}.{ext}`; nothing the uploader typed ever becomes
-part of a path.
-
-**"Met the target" and "late right now" are separate numbers.** Collapsing them
-into one is the obvious mistake and produces something meaningless — a department
-could show 95% compliance while sitting on ten requests that breached last month
-and were never touched, because an unresolved request has no resolution to judge.
-The first is a verdict on finished work; the second is a to-do list. Reopens are
-counted from the activity log rather than from the current status, because a
-request that was reopened and then properly fixed reads as `CLOSED` today — so
-counting statuses would report zero reopens on exactly the requests that had them.
-
-**Roles are an enum column, not a lookup table.** I had a `roles` table in my
-original design and dropped it. A lookup table earns its place when rows can be
-added at runtime, and roles cannot — the code decides what each one is allowed to
-do, so a fifth row inserted by hand would have no permissions attached to it
-anywhere. The table would look configurable while being nothing of the sort.
+- **A status workflow as a table, not scattered if-statements.** Every legal move
+  is one row of an enum: which statuses it applies from, what it changes the
+  request to, who may do it, and whether a note is required. A request cannot go
+  from `OPEN` to `CLOSED` because no action does that.
+- **Row-level visibility pushed into the SQL.** A role becomes filter values in
+  the WHERE clause, so the database never returns rows the caller should not see.
+  Search was added the same way, so searching cannot be used to see another
+  student's requests.
+- **Only the student who reported a problem can confirm it is fixed** — not the
+  technician, not an admin. If staff could close their own work, the resolution
+  rate would be a number they award themselves.
+- **Storing the SLA deadline but computing the SLA state.** The deadline is a
+  promise made at a moment in time; the state changes with the clock alone.
+- **Upload validation on magic bytes.** A file named `photo.jpg` and sent as
+  `image/jpeg` can still be a PHP script — both of those come from the uploader.
+- **A `FileStorage` interface with two implementations**, so switching from local
+  disk to S3 is configuration rather than a rewrite.
+- **Avoiding N+1 queries** with explicit `join fetch` on the list screens.
+- Writing an end-to-end script that tests the real HTTP API, after finding that
+  mocked unit tests could not tell me whether the security rules actually worked.
 
 ---
 
-## Storage
+## Future improvements
 
-Attachments go through a `FileStorage` interface with two implementations:
+Things that are not built:
 
-- **local disk** by default, so a fresh clone runs with no cloud account
-- **S3-compatible** under the `s3` profile — the same class talks to MinIO
-  locally, and to Cloudflare R2 or AWS in production, differing only by config
-
-The service that saves an attachment knows only the interface. Where a photo
-physically lives is a deployment decision.
-
-Both are verified end to end. Against MinIO, an uploaded file comes back
-byte-identical, the object lands in the bucket under `requests/{id}/{uuid}.png`,
-deleting the attachment removes the object as well, and the magic-byte check
-still refuses a renamed script — the full 150-check suite passes under the `s3`
-profile exactly as it does on local disk.
-
-To run against MinIO:
-
-```bash
-docker run -d -p 9000:9000 -p 9001:9001 --name minio \
-  -e MINIO_ROOT_USER=campusfix -e MINIO_ROOT_PASSWORD=campusfix123 \
-  quay.io/minio/minio server /data --console-address ":9001"
-```
-
-Create a bucket called `campusfix`, then:
-
-```bash
-AWS_ACCESS_KEY_ID=campusfix AWS_SECRET_ACCESS_KEY=campusfix123 \
-S3_ENDPOINT=http://localhost:9000 \
-./mvnw spring-boot:run -Dspring-boot.run.profiles=s3
-```
+- **Notifications.** Nobody is told when their request is resolved; they have to
+  look. In-app notifications first, email after.
+- **Comments on requests.** Only the fixed workflow notes exist, so a student
+  cannot ask "any update?".
+- **Database migrations.** Hibernate generates the schema. Flyway with
+  `ddl-auto=validate` is the correct answer before this held data that mattered.
+- **Controller and integration tests.** The endpoint and security rules are
+  covered by the smoke test script rather than by JUnit.
+- **API documentation.** Swagger/OpenAPI would be worth adding.
+- **Token revocation.** A JWT stays valid until it expires, so deactivating a
+  user does not end their current session.
+- **Search is a table scan.** `LIKE '%text%'` cannot use an index. Fine at a
+  college's volume; a `FULLTEXT` index is the answer if it stops being.
+- **Better mobile layout.** It works on a phone but was designed on a laptop.
 
 ---
 
-## Deploying to Render
+## Notes on the live demo
 
-Render builds the `Dockerfile` directly, so there is nothing extra to configure
-in the repository. Two things it does **not** provide, and how each is handled:
+It runs on Render's free plan with MySQL hosted on Aiven, so two things are worth
+knowing:
 
-**There is no managed MySQL.** The database comes from a MySQL-compatible
-provider — TiDB Cloud Serverless, Aiven or Clever Cloud all have a free tier —
-and Render runs only the application. Hosted MySQL refuses an unencrypted
-connection, which is why `sslMode` is a variable rather than the hardcoded
-`useSSL=false` that suits a local install.
+- The instance sleeps after a period of inactivity, and the next request takes
+  about a minute while it starts.
+- The SLA check does not run while it is asleep, so escalation catches up on the
+  next run rather than happening exactly on time.
 
-**The filesystem is ephemeral.** Anything written to disk is gone on the next
-deploy or restart, which would leave attachment rows pointing at files that no
-longer exist. So the deployed instance runs the `s3` profile against
-S3-compatible object storage — Cloudflare R2 has a free tier and speaks the S3
-API, so the same `S3FileStorage` class works unchanged.
-
-### Service settings
-
-| Setting | Value |
-|---|---|
-| Environment | Docker |
-| Health check path | `/actuator/health` |
-
-### Environment variables
-
-```bash
-SPRING_PROFILES_ACTIVE=prod,s3     # add ",demo" to seed the sample college
-
-DB_HOST=<host>.tidbcloud.com       # or your provider's host
-DB_PORT=4000                       # TiDB uses 4000; most others use 3306
-DB_NAME=campusfix
-DB_USERNAME=<user>
-DB_PASSWORD=<password>
-DB_SSL_MODE=VERIFY_IDENTITY        # hosted MySQL requires TLS
-
-JWT_SECRET=<a long random string>  # anyone holding this can mint a token
-ADMIN_EMAIL=you@yourcollege.edu
-ADMIN_PASSWORD=<a real password>
-
-S3_BUCKET=campusfix
-S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-S3_REGION=auto                     # "auto" for R2; a real region for AWS
-AWS_ACCESS_KEY_ID=<key>
-AWS_SECRET_ACCESS_KEY=<secret>
-```
-
-`PORT` is set by Render itself — the application binds to it rather than to a
-fixed 8080, or the health check would hit a port nothing is listening on.
-
-### Two things to expect on the free plan
-
-- **The instance sleeps after inactivity.** The first request afterwards takes
-  roughly a minute while the container starts. Worth knowing before you send the
-  link to somebody.
-- **The SLA check does not run while it is asleep.** Escalation catches up on the
-  next run once the instance wakes.
-
----
-
-## What it doesn't do
-
-Being straight about the gaps, because every one of these was a decision rather
-than an oversight:
-
-- **No notifications.** Nobody is emailed when their request is resolved; they
-  have to look. A bell icon that never rings would be worse than its absence.
-- **JWTs cannot be revoked.** Deactivate a user and their existing token works
-  until it expires, eight hours later. That is the cost of a stateless API, and
-  the alternatives — refresh tokens, a denylist, checking `active` on every
-  request — all put the server's state back. Acceptable when deactivation means
-  "this person left" rather than "this account is compromised right now".
-- **No Redis, deliberately.** Nothing here is slow enough to justify a cache. I'd
-  rather explain why I left it out than have an unjustified dependency.
-- **Search is a table scan.** `LIKE '%text%'` has a leading wildcard so no index
-  helps. Fine for a college's volume; a `FULLTEXT` index is the answer if it ever
-  isn't.
-- **Not deployed anywhere public yet.** It runs in Docker and has been verified
-  there under the production profile; putting it on a host is the next step.
-- **Hibernate still manages the schema** (`ddl-auto=update`), including in the
-  prod profile. That is fine for a project that can recreate its data and wrong
-  for one that cannot — Flyway migrations with `ddl-auto=validate` is the change
-  to make before this held anything real.
-- **No comments on requests.** Only the fixed set of workflow notes exists, so a
-  student cannot ask "any update?".
-- **No JUnit controller or integration tests.** The endpoint and security rules
-  are covered instead by `scripts/smoke-test.sh`, which exercises the real HTTP
-  API — thorough, but it needs a running instance rather than being part of
-  `mvn test`.
-
----
-
-## Layout
-
-```
-src/main/java/com/campusfix/
-├── auth/          login, JWT issuing, current user
-├── request/       service requests, assignment, status workflow
-├── attachment/    photo upload and download
-├── sla/           SLA targets, breach detection, escalation
-├── report/        the aggregation queries behind the reports screen
-├── activity/      the timeline written on every change
-├── user/          accounts and roles
-├── department/    the teams
-├── category/      problem types, each pointing at a department
-├── location/      where on campus
-├── demo/          the demo data seeder
-└── common/        security, storage, error handling, shared config
-
-src/main/resources/static/    the frontend: one HTML file per screen,
-                              one small JS file each, four shared files
-```
+No license file is included in this repository.
