@@ -8,6 +8,11 @@
 #   ./mvnw spring-boot:run -Dspring-boot.run.profiles=demo
 #   ./scripts/smoke-test.sh
 #
+# Against a deployed instance, pass its address and admin credentials:
+#
+#   BASE_URL=https://campusfix.onrender.com \
+#   ADMIN_EMAIL=you@college.edu ADMIN_PASSWORD=... ./scripts/smoke-test.sh
+#
 # Exits non-zero if anything fails, so it can be used in CI later.
 #
 # It writes real data — a department, a category, a location, a user and a
@@ -99,7 +104,10 @@ print(next((row['id'] for row in data if str(row.get(key)) != avoid), ''))
 # ---------------------------------------------------------------------------
 section "AUTHENTICATION"
 
-ADMIN=$(login admin@campusfix.local admin12345)
+# The administrator is the one account the demo seeder does not own, so its
+# credentials differ per deployment. Override them when running against a real
+# server, where ADMIN_PASSWORD is not the local default.
+ADMIN=$(login "${ADMIN_EMAIL:-admin@campusfix.local}" "${ADMIN_PASSWORD:-admin12345}")
 HEAD=$(login neha.rao@college.edu demo1234)
 TECH=$(login amit.sharma@college.edu demo1234)
 STUDENT=$(login priya.nair@college.edu demo1234)
