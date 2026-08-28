@@ -126,5 +126,7 @@ const App = (() => {
         });
     }
 
-    return { start, MENUS };
+    // MENUS stays private: the navigation is drawn here and nowhere else, so
+    // no page has a reason to read it.
+    return { start };
 })();

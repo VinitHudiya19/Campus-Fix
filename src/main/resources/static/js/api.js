@@ -118,8 +118,11 @@ const Api = (() => {
         return text ? '?' + text : '';
     }
 
+    // ApiError is deliberately not exported. Callers read error.message,
+    // error.status and error.fieldErrors off whatever is thrown; none of them
+    // needs the class itself, and exporting it invites instanceof checks that
+    // would break the moment a second error type appeared.
     return {
-        ApiError,
         token,
         storedUser,
         saveSession,

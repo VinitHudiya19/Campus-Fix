@@ -241,10 +241,16 @@ Attachments go through a `FileStorage` interface with two implementations:
 
 - **local disk** by default, so a fresh clone runs with no cloud account
 - **S3-compatible** under the `s3` profile — the same class talks to MinIO
-  locally and to AWS in production, differing only by two config properties
+  locally, and to Cloudflare R2 or AWS in production, differing only by config
 
 The service that saves an attachment knows only the interface. Where a photo
 physically lives is a deployment decision.
+
+Both are verified end to end. Against MinIO, an uploaded file comes back
+byte-identical, the object lands in the bucket under `requests/{id}/{uuid}.png`,
+deleting the attachment removes the object as well, and the magic-byte check
+still refuses a renamed script — the full 150-check suite passes under the `s3`
+profile exactly as it does on local disk.
 
 To run against MinIO:
 
@@ -261,6 +267,66 @@ AWS_ACCESS_KEY_ID=campusfix AWS_SECRET_ACCESS_KEY=campusfix123 \
 S3_ENDPOINT=http://localhost:9000 \
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=s3
 ```
+
+---
+
+## Deploying to Render
+
+Render builds the `Dockerfile` directly, so there is nothing extra to configure
+in the repository. Two things it does **not** provide, and how each is handled:
+
+**There is no managed MySQL.** The database comes from a MySQL-compatible
+provider — TiDB Cloud Serverless, Aiven or Clever Cloud all have a free tier —
+and Render runs only the application. Hosted MySQL refuses an unencrypted
+connection, which is why `sslMode` is a variable rather than the hardcoded
+`useSSL=false` that suits a local install.
+
+**The filesystem is ephemeral.** Anything written to disk is gone on the next
+deploy or restart, which would leave attachment rows pointing at files that no
+longer exist. So the deployed instance runs the `s3` profile against
+S3-compatible object storage — Cloudflare R2 has a free tier and speaks the S3
+API, so the same `S3FileStorage` class works unchanged.
+
+### Service settings
+
+| Setting | Value |
+|---|---|
+| Environment | Docker |
+| Health check path | `/actuator/health` |
+
+### Environment variables
+
+```bash
+SPRING_PROFILES_ACTIVE=prod,s3     # add ",demo" to seed the sample college
+
+DB_HOST=<host>.tidbcloud.com       # or your provider's host
+DB_PORT=4000                       # TiDB uses 4000; most others use 3306
+DB_NAME=campusfix
+DB_USERNAME=<user>
+DB_PASSWORD=<password>
+DB_SSL_MODE=VERIFY_IDENTITY        # hosted MySQL requires TLS
+
+JWT_SECRET=<a long random string>  # anyone holding this can mint a token
+ADMIN_EMAIL=you@yourcollege.edu
+ADMIN_PASSWORD=<a real password>
+
+S3_BUCKET=campusfix
+S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+S3_REGION=auto                     # "auto" for R2; a real region for AWS
+AWS_ACCESS_KEY_ID=<key>
+AWS_SECRET_ACCESS_KEY=<secret>
+```
+
+`PORT` is set by Render itself — the application binds to it rather than to a
+fixed 8080, or the health check would hit a port nothing is listening on.
+
+### Two things to expect on the free plan
+
+- **The instance sleeps after inactivity.** The first request afterwards takes
+  roughly a minute while the container starts. Worth knowing before you send the
+  link to somebody.
+- **The SLA check does not run while it is asleep.** Escalation catches up on the
+  next run once the instance wakes.
 
 ---
 
@@ -281,8 +347,6 @@ than an oversight:
 - **Search is a table scan.** `LIKE '%text%'` has a leading wildcard so no index
   helps. Fine for a college's volume; a `FULLTEXT` index is the answer if it ever
   isn't.
-- **The S3 adapter is written but untested** — I had no MinIO instance to run it
-  against. Local disk is verified end to end.
 - **Not deployed anywhere public yet.** It runs in Docker and has been verified
   there under the production profile; putting it on a host is the next step.
 - **Hibernate still manages the schema** (`ddl-auto=update`), including in the

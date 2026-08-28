@@ -40,6 +40,10 @@ ENV STORAGE_LOCATION=/app/uploads
 # The JVM's default heap is a fraction of visible RAM, which inside a container
 # is the host's RAM. Without this it happily sizes a heap the container is not
 # allowed to use and gets killed.
-ENV JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+UseContainerSupport"
+#
+# 60% rather than 75%: on a 512 MB instance — Render's free tier — 75% leaves
+# only ~128 MB for metaspace, thread stacks and native memory, and Spring Boot's
+# metaspace alone is close to that. Override JAVA_OPTS on a larger instance.
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=60 -XX:+UseContainerSupport"
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]

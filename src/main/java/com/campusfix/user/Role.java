@@ -43,8 +43,4 @@ public enum Role {
     public boolean isDepartmentRequired() {
         return departmentRequired;
     }
-
-    public boolean isStaff() {
-        return this != STUDENT;
-    }
 }

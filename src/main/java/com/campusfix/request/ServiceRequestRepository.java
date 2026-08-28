@@ -85,7 +85,6 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
             """)
     Optional<ServiceRequest> findByIdWithDetail(@Param("id") Long id);
 
-    Optional<ServiceRequest> findByRequestNumber(String requestNumber);
 
     /**
      * Past its deadline and still genuinely unfinished.
