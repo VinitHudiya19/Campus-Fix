@@ -169,22 +169,51 @@ A single Spring Boot application (a monolith), organised by feature rather than
 by layer.
 
 ```text
-Browser (HTML/JS)
-      ↓  fetch + JWT in the Authorization header
-REST Controller      reads the request, returns a DTO, no business rules
-      ↓
-Service              enforces the rules, owns the transaction
-      ↓
-Repository           Spring Data JPA
-      ↓
-Hibernate
-      ↓
-MySQL
+                        ┌─────────────────────────┐
+                        │        Browser          │
+                        │   HTML · CSS · JS       │
+                        └────────────┬────────────┘
+                                     │  fetch, JWT in the
+                                     │  Authorization header
+                                     ↓
+                        ┌─────────────────────────┐
+                        │   Security filter       │  reads the token,
+                        │   + REST controllers    │  applies the role rules
+                        └────────────┬────────────┘
+                                     ↓
+                        ┌─────────────────────────┐
+                        │        Services         │  business rules,
+                        │                         │  transaction boundary
+                        └───┬──────────┬──────┬───┘
+                            │          │      │
+          ┌─────────────────┘          │      └──────────────────┐
+          ↓                            ↓                         │ publishes
+┌───────────────────┐      ┌───────────────────────┐             │ an event
+│   FileStorage     │      │  Repositories (JPA)   │             ↓
+│  local disk / S3  │      │      Hibernate        │   ┌───────────────────┐
+└─────────┬─────────┘      └───────────┬───────────┘   │   Notifications   │
+          ↓                            ↓               │  after commit,    │
+   ┌─────────────┐              ┌─────────────┐        │  on a thread pool │
+   │ Disk  or R2 │              │    MySQL    │        └─────────┬─────────┘
+   │   /  AWS S3 │              └─────────────┘                  │
+   └─────────────┘                     ↑                         ↓
+                                       │              ┌────────────────────┐
+                        ┌──────────────┴───────┐      │ in-app  ·  email   │
+                        │  Scheduled SLA check │      │  (email optional)  │
+                        │  every 15 minutes    │      └────────────────────┘
+                        └──────────────────────┘
 ```
 
 Everything about requests lives in `com.campusfix.request`, everything about
 users in `com.campusfix.user`, and so on. A change to one feature touches one
 folder instead of four.
+
+Two things are deliberately off the main path. **File storage** sits behind an
+interface, so where a photo lives is a deployment choice rather than something
+the request code knows about. **Notifications** are reached by publishing an
+event, not by a method call — the services have no compile-time knowledge that
+notifications exist, and delivery happens after the transaction commits so it
+cannot affect the request that triggered it.
 
 ---
 
@@ -222,8 +251,40 @@ CAMPUS-FIX/
 
 ## Database
 
-Ten entities. Hibernate generates the schema from them (`ddl-auto=update`);
+Eleven entities. Hibernate generates the schema from them (`ddl-auto=update`);
 there are no migration files.
+
+```text
+   Department 1───* Category                       SlaConfig
+       │ 1              │ 1                     (one row per priority,
+       │                │                        no foreign keys)
+       │ *              │ *
+     User ────────────► ServiceRequest ◄──────── Location
+       ▲   reports (1:*)   │      │  (optional)      1
+       │                   │      │
+       │ assigned (0..1)   │      └──────────────────────┐
+       └───────────────────┘                             │
+                           │                             │
+      ┌────────────┬───────┴───────┬──────────────┐      │
+      │ 1:*        │ 1:*           │ 1:*          │ 1:*  │
+      ▼            ▼               ▼              ▼      ▼
+  Assignment   ActivityLog     Attachment    Escalation  Notification
+      │             │               │                        │
+      │ technician  │ actor         │ uploadedBy             │ recipient
+      └─────────────┴───────────────┴────────────────────────┘
+                           all reference User
+```
+
+**Reading it:** a department has many categories; a category belongs to exactly
+one department, and that link is what routes a request to a team. A request is
+reported by one user, has one category, and optionally a location and a currently
+assigned technician. Five tables hang off a request, and each of them also points
+at a user.
+
+Nullable on purpose: `ServiceRequest.location` (a campus-wide outage has no one
+place), `ServiceRequest.assignedTechnician` (nobody has picked it up yet),
+`ActivityLog.actor` (the scheduled SLA check has no person behind it), and
+`User.department` (students and admins belong to no team).
 
 | Entity | Purpose |
 |---|---|
@@ -239,13 +300,13 @@ there are no migration files.
 | `Escalation` | A record that a late request was pushed up a level |
 | `Notification` | One thing a particular person should know, with a read state |
 
-The relationships that matter:
+Two of these are easy to confuse. **`ActivityLog`** is the history of a *request*
+— everyone who can see the request sees the same entries. **`Notification`**
+belongs to a *person* and carries a read state. One event produces one activity
+entry and zero or more notifications.
 
-- A **category** belongs to one **department** — this is what routes a request
-- A **request** has one student, one category, an optional location, and a
-  currently assigned technician
-- **Assignments** accumulate rather than overwrite, so reassignment keeps history
-- **Activity logs** and **escalations** both belong to a request
+**`Assignment`** rows accumulate rather than being overwritten, so reassigning a
+request keeps the record of who held it before, and for how long.
 
 ---
 
@@ -300,6 +361,95 @@ GET/POST/PUT/DELETE  /api/departments, /api/categories, /api/locations, /api/use
 GET    /api/sla       PUT /api/sla/{priority}      POST /api/sla/check-now
 GET    /api/reports   admin and department head only
 ```
+
+### Examples
+
+Three requests that show the style. Every call except login carries
+`Authorization: Bearer <token>`.
+
+**A student reports a problem.** The body has no `studentId`, `status`,
+`requestNumber` or `dueAt` — the reporter comes from the token, the status is
+always `OPEN`, and the server generates the number and the deadline.
+
+```http
+POST /api/requests
+Content-Type: application/json
+
+{
+  "title": "Wi-Fi keeps dropping in the library",
+  "description": "The connection in the reading hall drops every few minutes.",
+  "categoryId": 1,
+  "locationId": 4,
+  "priority": "MEDIUM"
+}
+```
+
+```json
+201 Created
+{
+  "id": 96,
+  "requestNumber": "CF-2026-000096",
+  "title": "Wi-Fi keeps dropping in the library",
+  "categoryName": "Wi-Fi",
+  "departmentName": "IT Support",
+  "locationName": "Main Campus - Library Block - Floor 2 - Reading Hall",
+  "priority": "MEDIUM",
+  "status": "OPEN",
+  "slaState": "ON_TRACK",
+  "studentName": "Priya Nair",
+  "assignedTechnicianName": null,
+  "dueAt": "2026-08-31T10:00:00Z"
+}
+```
+
+The student picked a category, never a department — `IT Support` was worked out
+from it.
+
+**A department head assigns it.** Returns the whole request, because assigning
+also moves the status.
+
+```http
+POST /api/requests/96/assign
+
+{ "technicianId": 30, "note": "On that floor today" }
+```
+
+```json
+200 OK
+{ "id": 96, "status": "ASSIGNED", "assignedTechnicianName": "Amit Sharma", ... }
+```
+
+**The technician resolves it.** The note is required here — a bare status change
+would leave the student with no idea what was done.
+
+```http
+POST /api/requests/96/resolve
+
+{ "note": "Replaced the access point" }
+```
+
+```json
+200 OK
+{ "id": 96, "status": "RESOLVED", "resolutionNote": "Replaced the access point", ... }
+```
+
+Omitting it is a **422**:
+
+```json
+{
+  "timestamp": "2026-08-31T13:50:21.103Z",
+  "status": 422,
+  "message": "Please describe what you did to fix it",
+  "path": "/api/requests/117/resolve"
+}
+```
+
+Resolving a request that was never started is refused too, before the note is
+even looked at — `"'Mark as resolved' is not possible while the request is
+assigned"`.
+
+Every error in the API uses that shape. Validation failures add a `fieldErrors`
+object keyed by field name.
 
 There is no signup endpoint. A college issues accounts, so users are created by
 an admin through `POST /api/users`.
@@ -520,6 +670,27 @@ scratch database rather than one you are about to demonstrate.
 
 Signing in as each role in turn is the quickest way to see the point of the
 project, because the same request looks different to each of them.
+
+---
+
+## Key engineering decisions
+
+The short version. Each of these is expanded below.
+
+| Decision | Why |
+|---|---|
+| Status changes go through one action table | A request cannot reach a state no action leads to |
+| Separate `assignments` table | Reassignment keeps the history instead of overwriting it |
+| `assigned_technician_id` also on the request | Every list screen asks "who has it?" — a subquery on the hottest path is not worth the purity |
+| `due_at` stored, not calculated | A deadline is a promise made at a moment; changing policy must not rewrite the past |
+| SLA state computed on read | It changes with the clock alone, so a stored column would be wrong most of the time |
+| Visibility filters in the SQL | Rows the caller may not see never reach application code |
+| 404, not 403, outside your scope | A 403 confirms the id exists and lets someone count the college's requests |
+| Uploads checked on magic bytes | Filename and `Content-Type` are both supplied by the uploader |
+| `FileStorage` behind an interface | Local disk to S3 is a config change, not a rewrite |
+| Notifications by event, after commit | An email cannot be un-sent, and delivery must not slow the request |
+| Roles as an enum, not a table | The code decides what a role may do, so a lookup table only pretends to be configurable |
+| No Redis | Nothing measured was slow enough to justify the operational cost |
 
 ---
 
