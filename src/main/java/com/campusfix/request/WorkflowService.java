@@ -7,7 +7,9 @@ import com.campusfix.common.security.AuthenticatedUser;
 import com.campusfix.common.security.CurrentUser;
 import com.campusfix.request.dto.RequestDetailResponse;
 import com.campusfix.request.dto.StatusChangeRequest;
+import com.campusfix.request.event.RequestStatusChangedEvent;
 import com.campusfix.sla.SlaService;
+import org.springframework.context.ApplicationEventPublisher;
 import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
@@ -35,13 +37,16 @@ public class WorkflowService {
     private final SlaService slaService;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public WorkflowService(ServiceRequestRepository requestRepository,
                            UserRepository userRepository,
                            ActivityLogService activityLog,
                            SlaService slaService,
                            CurrentUser currentUser,
-                           Clock clock) {
+                           Clock clock,
+                           ApplicationEventPublisher events) {
+        this.events = events;
         this.requestRepository = requestRepository;
         this.userRepository = userRepository;
         this.activityLog = activityLog;
@@ -84,6 +89,11 @@ public class WorkflowService {
 
         activityLog.recordStatusChange(request, actor, from.name(), action.getTarget().name(),
                 buildMessage(action, actor, note));
+
+        // The listener decides who cares about this particular move; this
+        // service only reports that it happened.
+        events.publishEvent(new RequestStatusChangedEvent(
+                request.getId(), from, action.getTarget(), actor.getId(), actor.getFullName(), note));
 
         return RequestDetailResponse.from(request, slaService.stateOf(request));
     }

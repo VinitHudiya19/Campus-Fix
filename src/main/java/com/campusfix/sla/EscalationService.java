@@ -5,6 +5,8 @@ import com.campusfix.activity.ActivityType;
 import com.campusfix.request.ServiceRequest;
 import com.campusfix.request.ServiceRequestRepository;
 import com.campusfix.sla.dto.EscalationResponse;
+import com.campusfix.sla.event.RequestEscalatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,26 +35,38 @@ public class EscalationService {
     private final ActivityLogService activityLog;
     private final Clock clock;
     private final int graceHours;
+    private final ApplicationEventPublisher events;
 
     public EscalationService(ServiceRequestRepository requestRepository,
                              EscalationRepository escalationRepository,
                              ActivityLogService activityLog,
                              Clock clock,
-                             @Value("${campusfix.sla.escalation-grace-hours:24}") int graceHours) {
+                             @Value("${campusfix.sla.escalation-grace-hours:24}") int graceHours,
+                             ApplicationEventPublisher events) {
         this.requestRepository = requestRepository;
         this.escalationRepository = escalationRepository;
         this.activityLog = activityLog;
         this.clock = clock;
         this.graceHours = graceHours;
+        this.events = events;
     }
 
     /**
      * Runs on a fixed delay rather than a fixed rate: the next run starts a set
      * time after the previous one <em>finished</em>, so a slow pass on a large
      * database cannot pile runs on top of each other.
+     *
+     * <p>{@code @Transactional} is on this method, not only on the one it calls.
+     * Calling {@code escalateOverdue()} from here is a self-invocation, which
+     * does not pass through Spring's proxy — so the annotation on the inner
+     * method would do nothing, and there would be no transaction at all. The
+     * escalations would still save, because each repository call opens its own,
+     * but {@code @TransactionalEventListener} has nothing to bind to and drops
+     * every event silently. Escalations happened and nobody was ever notified.
      */
     @Scheduled(fixedDelayString = "${campusfix.sla.check-interval-ms:900000}",
             initialDelayString = "${campusfix.sla.initial-delay-ms:60000}")
+    @Transactional
     public void checkOverdueRequests() {
         int escalated = escalateOverdue();
         if (escalated > 0) {
@@ -114,6 +128,8 @@ public class EscalationService {
         }
         activityLog.recordSystemEvent(request, ActivityType.ESCALATED,
                 "Escalated to " + level.getDisplayName().toLowerCase() + ": " + reason);
+
+        events.publishEvent(new RequestEscalatedEvent(request.getId(), level, reason));
 
         return true;
     }

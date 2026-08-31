@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
@@ -65,9 +66,12 @@ class WorkflowServiceTest {
         lenient().when(userRepository.findById(any())).thenAnswer(call -> Optional.of(person(call.getArgument(0))));
     }
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private WorkflowService service() {
         return new WorkflowService(requestRepository, userRepository, activityLog, slaService,
-                currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
+                currentUser, Clock.fixed(NOW, ZoneOffset.UTC), events);
     }
 
     @Test

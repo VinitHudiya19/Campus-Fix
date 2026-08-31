@@ -68,6 +68,16 @@
         </dependency>
 
         <!--
+            Email notifications. The channel that uses it only registers when
+            spring.mail.host is set, so with no mail server configured this is
+            an unused jar rather than a broken feature.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
+        <!--
             Phase 5 upgraded this from the standalone spring-security-crypto to
             the full starter, now that there is a login endpoint to let people in.
         -->

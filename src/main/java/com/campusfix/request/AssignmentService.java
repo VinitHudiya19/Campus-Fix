@@ -13,6 +13,8 @@ import com.campusfix.user.Role;
 import com.campusfix.user.User;
 import com.campusfix.user.UserRepository;
 import org.springframework.stereotype.Service;
+import com.campusfix.request.event.RequestAssignedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
@@ -36,6 +38,7 @@ public class AssignmentService {
     private final SlaService slaService;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final ApplicationEventPublisher events;
 
     public AssignmentService(ServiceRequestRepository requestRepository,
                              AssignmentRepository assignmentRepository,
@@ -43,7 +46,9 @@ public class AssignmentService {
                              ActivityLogService activityLog,
                              SlaService slaService,
                              CurrentUser currentUser,
-                             Clock clock) {
+                             Clock clock,
+                             ApplicationEventPublisher events) {
+        this.events = events;
         this.requestRepository = requestRepository;
         this.assignmentRepository = assignmentRepository;
         this.userRepository = userRepository;
@@ -82,6 +87,12 @@ public class AssignmentService {
         assignmentRepository.save(new Assignment(request, technician, assigner, now, note));
         request.assignTo(technician, now);
         activityLog.recordAssigned(request, assigner, technician, note);
+
+        // Published, not called. This service has no compile-time knowledge of
+        // notifications — the listener is delivered to only if the transaction
+        // commits, so nobody is told about an assignment that got rolled back.
+        events.publishEvent(new RequestAssignedEvent(
+                request.getId(), technician.getId(), assigner.getFullName()));
 
         return RequestDetailResponse.from(request, slaService.stateOf(request));
     }

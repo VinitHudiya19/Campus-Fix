@@ -105,6 +105,12 @@ the category decides which department gets the work.
 - Reports across all departments
 - Trigger the overdue check manually
 
+**Notifications**
+- A bell in the navigation with an unread count
+- Told when: work is assigned to you, your request is resolved or rejected, your
+  fix is reopened or confirmed, or a request you are responsible for is escalated
+- Optional email copy of the same notification, if a mail server is configured
+
 **Across the system**
 - Search over request number, title and description
 - Filter by status, category, priority and unassigned
@@ -138,6 +144,12 @@ the category decides which department gets the work.
 - Local disk by default
 - AWS SDK for Java (S3) — used under the `s3` profile for S3-compatible storage
 
+**Notifications**
+- Spring's application events — services publish, the notification module listens,
+  so nothing in `request` or `sla` knows notifications exist
+- Spring Mail — used only by the email channel, which registers only when a mail
+  host is configured
+
 **Testing**
 - JUnit 5, Mockito, AssertJ
 - H2 — in-memory database so tests need no MySQL
@@ -146,8 +158,8 @@ the category decides which department gets the work.
 - Docker (multi-stage build)
 - Docker Compose for local development
 
-There is **no** Redis, message queue, or email integration in this project. The
-frontend has no build step — the files are served by Spring directly.
+There is **no** Redis or message queue in this project. The frontend has no build
+step — the files are served by Spring directly.
 
 ---
 
@@ -225,6 +237,7 @@ there are no migration files.
 | `Attachment` | A record of an uploaded photo (the file lives in storage) |
 | `SlaConfig` | Target hours and warning threshold per priority |
 | `Escalation` | A record that a late request was pushed up a level |
+| `Notification` | One thing a particular person should know, with a read state |
 
 The relationships that matter:
 
@@ -275,6 +288,12 @@ GET    /api/requests/{id}/attachments
 POST   /api/requests/{id}/attachments
 GET    /api/requests/{id}/attachments/{attachmentId}
 DELETE /api/requests/{id}/attachments/{attachmentId}
+
+Notifications
+GET    /api/notifications
+GET    /api/notifications/unread-count
+PUT    /api/notifications/{id}/read
+PUT    /api/notifications/read-all
 
 Admin
 GET/POST/PUT/DELETE  /api/departments, /api/categories, /api/locations, /api/users
@@ -425,6 +444,42 @@ ADMIN_EMAIL, ADMIN_PASSWORD
 STORAGE_LOCATION                      local disk path
 S3_BUCKET, S3_ENDPOINT, S3_REGION     used only under the s3 profile
 PORT                                  set by the hosting platform
+
+SPRING_MAIL_HOST                      set this to turn email on; leave unset and
+SPRING_MAIL_PORT                        only in-app notifications are used
+SPRING_MAIL_USERNAME
+SPRING_MAIL_PASSWORD
+MAIL_FROM                             the From address on notification emails
+BASE_URL                              used to build the link back to a request
+```
+
+### Turning email on
+
+In-app notifications always work. Email is a second channel that only exists when
+a mail host is configured — with `SPRING_MAIL_HOST` unset, the mail sender is
+never created and the application behaves exactly as it does now.
+
+For Gmail you need an **App Password**, not your normal password: turn on
+2-Step Verification, then Google Account → Security → App passwords.
+
+```bash
+SPRING_MAIL_HOST=smtp.gmail.com
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=you@gmail.com
+SPRING_MAIL_PASSWORD=<16-character app password>
+MAIL_FROM=you@gmail.com
+BASE_URL=https://your-app.onrender.com
+```
+
+Gmail allows roughly 500 messages a day and increasingly blocks app-password SMTP
+from cloud IP ranges. For a demo, **Mailtrap** is the better choice — it captures
+mail in a web inbox instead of delivering it, so nothing reaches real people:
+
+```bash
+SPRING_MAIL_HOST=sandbox.smtp.mailtrap.io
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=<mailtrap username>
+SPRING_MAIL_PASSWORD=<mailtrap password>
 ```
 
 Profiles: `demo` (seed data), `prod` (server settings), `s3` (object storage).
@@ -489,6 +544,18 @@ The parts I would want to talk through in an interview:
   `image/jpeg` can still be a PHP script — both of those come from the uploader.
 - **A `FileStorage` interface with two implementations**, so switching from local
   disk to S3 is configuration rather than a rewrite.
+- **Notifications sent after the transaction commits, on a separate thread.**
+  Services publish an event and know nothing about notifications.
+  `@TransactionalEventListener(AFTER_COMMIT)` means nobody is told about a change
+  that later rolled back — an email cannot be un-sent — and `@Async` keeps a slow
+  mail server out of the API response. The trade-off is real: by then there is
+  nothing left to roll back, so a failed notification is lost rather than retried,
+  and is logged rather than silent.
+- **Three bugs that feature taught me**, all of which only appear when you run it:
+  a self-invoked method skips Spring's proxy so its events are silently dropped;
+  `@Async` with no configured executor creates a new thread per call forever; and
+  a mail health check will report the whole application DOWN, which a hosting
+  platform reads as a failed deploy.
 - **Avoiding N+1 queries** with explicit `join fetch` on the list screens.
 - Writing an end-to-end script that tests the real HTTP API, after finding that
   mocked unit tests could not tell me whether the security rules actually worked.
@@ -499,8 +566,6 @@ The parts I would want to talk through in an interview:
 
 Things that are not built:
 
-- **Notifications.** Nobody is told when their request is resolved; they have to
-  look. In-app notifications first, email after.
 - **Comments on requests.** Only the fixed workflow notes exist, so a student
   cannot ask "any update?".
 - **Database migrations.** Hibernate generates the schema. Flyway with

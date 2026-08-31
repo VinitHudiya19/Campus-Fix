@@ -352,6 +352,31 @@ for page in "" login.html index.html requests.html request-new.html request-deta
     check "GET /$page" "200" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/$page")"
 done
 
+# ---------------------------------------------------------------------------
+section "NOTIFICATIONS"
+
+# The workflow section above assigned this request to the technician and then
+# had the student reopen and close it, so both should have been told things.
+check "technician has notifications"          "200"  "$(status GET /api/notifications "$TECH")"
+contains "including the assignment"           "assigned this request to you" "$(body GET /api/notifications "$TECH")"
+contains "and the reopen"                     "still not fixed" "$(body GET /api/notifications "$TECH")"
+contains "the reporter was told it was fixed" "marked your request as resolved" "$(body GET /api/notifications "$STUDENT")"
+
+check "unread count is available"             "200"  "$(status GET /api/notifications/unread-count "$TECH")"
+contains "and is a number"                    '"unread"' "$(body GET /api/notifications/unread-count "$TECH")"
+
+# Nobody is told about something they did themselves.
+NOTES_FOR_OTHER=$(body GET /api/notifications "$OTHER_STUDENT")
+check "an uninvolved student has none"        "[]"   "$NOTES_FOR_OTHER"
+
+FIRST_NOTE=$(field "$(body GET /api/notifications "$TECH")" id)
+check "marking one read"                      "204"  "$(status PUT "/api/notifications/$FIRST_NOTE/read" "$TECH")"
+# Looked up by id AND recipient, so another user's id is simply not found.
+check "cannot read someone else's"            "404"  "$(status PUT "/api/notifications/$FIRST_NOTE/read" "$STUDENT")"
+check "marking all read"                      "204"  "$(status PUT /api/notifications/read-all "$TECH")"
+check "the count is then zero"                "0"    "$(field "$(body GET /api/notifications/unread-count "$TECH")" unread)"
+check "notifications need a login"            "401"  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/notifications")"
+
 section "HEALTH"
 check "health check answers without a token"  "200" "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/actuator/health")"
 contains "and reports UP"                     '"status":"UP"' "$(curl -s "$BASE/actuator/health")"

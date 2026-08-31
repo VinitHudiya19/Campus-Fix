@@ -83,6 +83,28 @@ body {
     margin-bottom: 0.25rem;
 }
 
+/* The notification dropdown. Fixed height so a long list scrolls inside the
+   menu instead of running off the bottom of the screen. */
+.cf-notifications {
+    width: 22rem;
+    max-height: 26rem;
+    overflow-y: auto;
+}
+
+.cf-note {
+    color: inherit;
+}
+
+.cf-note:hover {
+    background-color: #f6f7f9;
+}
+
+/* Unread ones carry a left border rather than a filled background — twenty
+   highlighted rows would be harder to scan than none. */
+.cf-note.unread {
+    border-left: 3px solid #1c5da8;
+}
+
 .timeline {
     list-style: none;
     margin: 0;

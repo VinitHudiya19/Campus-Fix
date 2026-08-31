@@ -9,6 +9,7 @@ import com.campusfix.common.security.CurrentUser;
 import com.campusfix.department.Department;
 import com.campusfix.request.dto.AssignRequest;
 import com.campusfix.request.dto.RequestDetailResponse;
+import com.campusfix.request.event.RequestAssignedEvent;
 import com.campusfix.sla.SlaService;
 import com.campusfix.sla.SlaState;
 import com.campusfix.user.Role;
@@ -17,8 +18,10 @@ import com.campusfix.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.Clock;
@@ -64,9 +67,12 @@ class AssignmentServiceTest {
         lenient().when(slaService.stateOf(any())).thenReturn(SlaState.ON_TRACK);
     }
 
+    @Mock
+    private ApplicationEventPublisher events;
+
     private AssignmentService service() {
         return new AssignmentService(requestRepository, assignmentRepository, userRepository,
-                activityLog, slaService, currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
+                activityLog, slaService, currentUser, Clock.fixed(NOW, ZoneOffset.UTC), events);
     }
 
     @Test
@@ -84,6 +90,26 @@ class AssignmentServiceTest {
         assertThat(response.assignedTechnicianName()).isEqualTo("Amit Sharma");
         assertThat(response.assignedAt()).isEqualTo(NOW);
         verify(assignmentRepository).save(any(Assignment.class));
+
+        // The event is what tells the technician. Publishing it is part of the
+        // job, not an implementation detail, so it is asserted here.
+        ArgumentCaptor<RequestAssignedEvent> published = ArgumentCaptor.forClass(RequestAssignedEvent.class);
+        verify(events).publishEvent(published.capture());
+        assertThat(published.getValue().technicianId()).isEqualTo(2L);
+        assertThat(published.getValue().assignedByName()).isEqualTo("Neha Rao");
+    }
+
+    @Test
+    void nothingIsAnnouncedWhenAssignmentIsRefused() {
+        signedInAs(IT_HEAD);
+        when(requestRepository.findByIdWithDetail(1L)).thenReturn(Optional.of(openRequest()));
+        when(userRepository.findByIdWithDepartment(9L)).thenReturn(Optional.of(technician(9L, 2L, true)));
+
+        assertThatThrownBy(() -> service().assign(1L, new AssignRequest(9L, null)))
+                .isInstanceOf(BusinessRuleException.class);
+
+        // No event, so no notification about an assignment that never happened.
+        verify(events, never()).publishEvent(any(Object.class));
     }
 
     @Test
